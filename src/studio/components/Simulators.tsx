@@ -1,18 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  BatteryCharging,
   Lock,
+  Moon,
   Music,
   Radio,
   RefreshCw,
   Send,
+  Thermometer,
   Unlock,
   Volume2,
   VolumeX,
   Wifi,
 } from "lucide-react";
-import type { SimType } from "../types";
+import type { Translations } from "../i18n";
+import type { Lang, SimType } from "../types";
 
 interface SimProps {
+  t: Translations;
+  lang: Lang;
   onLog: (msg: string) => void;
 }
 
@@ -21,7 +27,7 @@ type OscillatorWave = "sine" | "square" | "sawtooth" | "triangle";
 // ============================================================================
 // 1. SOUND SIMULATOR (WEB AUDIO API SYNTH + LIVE OSCILLOSCOPE)
 // ============================================================================
-export function SoundSimulator({ onLog }: SimProps) {
+export function SoundSimulator({ t, onLog }: SimProps) {
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [waveform, setWaveform] = useState<OscillatorWave>("sine");
   const [freq, setFreq] = useState(440);
@@ -228,7 +234,7 @@ export function SoundSimulator({ onLog }: SimProps) {
             }`}
           >
             <Music className="w-3.5 h-3.5" />
-            {playingArp ? "Stop Sequence" : "Play Sequence"}
+            {playingArp ? t.sim.stopSeq : t.sim.playSeq}
           </button>
           <button
             type="button"
@@ -240,7 +246,7 @@ export function SoundSimulator({ onLog }: SimProps) {
             }`}
           >
             {audioEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-            {audioEnabled ? "Mute Speaker" : "Enable Live Audio"}
+            {audioEnabled ? t.sim.muteSpeaker : t.sim.enableAudio}
           </button>
         </div>
       </div>
@@ -248,14 +254,14 @@ export function SoundSimulator({ onLog }: SimProps) {
       <div className="rounded-xl overflow-hidden border border-slate-800 relative bg-[#060a12]">
         <canvas ref={canvasRef} className="w-full h-[148px] block" />
         <div className="absolute top-2 left-3 text-[10px] font-mono text-cyan-400/90 tracking-wide">
-          Oscilloscope · {audioEnabled ? "Live Web Audio" : "Synthesized Preview (Muted)"}
+          {t.sim.oscilloscope} · {audioEnabled ? t.sim.liveWebAudio : t.sim.synthPreviewMuted}
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="text-xs font-medium text-slate-600 dark:text-slate-400 block mb-1.5">
-            Waveform
+            {t.sim.waveform}
           </label>
           <div className="grid grid-cols-4 gap-1.5">
             {(["sine", "square", "sawtooth", "triangle"] as const).map((w) => (
@@ -266,20 +272,20 @@ export function SoundSimulator({ onLog }: SimProps) {
                   setWaveform(w);
                   onLog(`Synth waveform -> ${w.toUpperCase()}`);
                 }}
-                className={`py-1.5 rounded-lg text-xs font-mono capitalize border transition-colors cursor-pointer ${
+                className={`py-1.5 rounded-lg text-xs font-mono border transition-colors cursor-pointer ${
                   waveform === w
                     ? "bg-cyan-500/15 border-cyan-500 text-cyan-700 dark:text-cyan-300 font-semibold"
                     : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-400"
                 }`}
               >
-                {w}
+                {t.sim.waveNames[w]}
               </button>
             ))}
           </div>
         </div>
         <div>
           <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400 mb-1.5">
-            <span>Frequency</span>
+            <span>{t.sim.frequency}</span>
             <span className="font-mono font-semibold text-cyan-600 dark:text-cyan-400 tabular-nums">
               {freq} Hz
             </span>
@@ -316,7 +322,7 @@ export function SoundSimulator({ onLog }: SimProps) {
 
       <div>
         <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400 mb-1">
-          <span>MAX98357A Gain / Volume</span>
+          <span>{t.sim.gainVolume}</span>
           <span className="font-mono tabular-nums">{Math.round(volume * 100)}%</span>
         </div>
         <input
@@ -336,7 +342,7 @@ export function SoundSimulator({ onLog }: SimProps) {
 // ============================================================================
 // 2. DISPLAY SIMULATOR (128x64 SSD1306 OLED PIXEL CANVAS)
 // ============================================================================
-export function DisplaySimulator({ onLog }: SimProps) {
+export function DisplaySimulator({ t, onLog }: SimProps) {
   const [mode, setMode] = useState<"telemetry" | "text" | "graphics">("telemetry");
   const [power, setPower] = useState(true);
   const [inverted, setInverted] = useState(false);
@@ -442,9 +448,9 @@ export function DisplaySimulator({ onLog }: SimProps) {
       <div className="flex flex-wrap gap-2 justify-center">
         {(
           [
-            ["telemetry", "Telemetry"],
-            ["text", "Custom Text"],
-            ["graphics", "Animation"],
+            ["telemetry", t.sim.telemetry],
+            ["text", t.sim.customText],
+            ["graphics", t.sim.animation],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -473,7 +479,7 @@ export function DisplaySimulator({ onLog }: SimProps) {
           }}
           className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-cyan-500 cursor-pointer"
         >
-          Invert Pixels
+          {t.sim.invertPixels}
         </button>
         <button
           type="button"
@@ -489,14 +495,14 @@ export function DisplaySimulator({ onLog }: SimProps) {
               : "border-rose-500/50 text-rose-600 dark:text-rose-400"
           }`}
         >
-          {power ? "Display ON" : "Display OFF"}
+          {power ? t.sim.displayOn : t.sim.displayOff}
         </button>
       </div>
 
       <div className="max-w-md mx-auto space-y-3">
         <div>
           <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400 mb-1">
-            <span>Contrast Register (0x81)</span>
+            <span>{t.sim.contrastReg}</span>
             <span className="font-mono tabular-nums">0x{contrast.toString(16).toUpperCase().padStart(2, "0")}</span>
           </div>
           <input
@@ -515,7 +521,7 @@ export function DisplaySimulator({ onLog }: SimProps) {
             maxLength={16}
             value={customText}
             onChange={(e) => setCustomText(e.target.value)}
-            placeholder="Type text for OLED (max 16 chars)..."
+            placeholder={t.sim.oledPlaceholder}
             className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-cyan-300 font-mono text-sm focus:outline-none focus:border-cyan-500"
           />
         )}
@@ -530,6 +536,7 @@ export function DisplaySimulator({ onLog }: SimProps) {
 interface RfidTag {
   id: string;
   name: string;
+  nameRo: string;
   uid: string;
   type: string;
   sak: string;
@@ -540,6 +547,7 @@ const RFID_TAGS: RfidTag[] = [
   {
     id: "auth",
     name: "Authorized Card",
+    nameRo: "Card Autorizat",
     uid: "04:A3:2B:9F",
     type: "MIFARE Classic 1K",
     sak: "0x08",
@@ -548,6 +556,7 @@ const RFID_TAGS: RfidTag[] = [
   {
     id: "admin",
     name: "Admin Keyfob",
+    nameRo: "Breloc Administrator",
     uid: "DE:AD:BE:EF",
     type: "MIFARE DESFire EV2",
     sak: "0x20",
@@ -556,6 +565,7 @@ const RFID_TAGS: RfidTag[] = [
   {
     id: "unknown",
     name: "Guest / Unknown Tag",
+    nameRo: "Card Vizitator / Necunoscut",
     uid: "7F:12:4C:08",
     type: "NTAG215",
     sak: "0x00",
@@ -563,7 +573,7 @@ const RFID_TAGS: RfidTag[] = [
   },
 ];
 
-export function RfidSimulator({ onLog }: SimProps) {
+export function RfidSimulator({ t, lang, onLog }: SimProps) {
   const [lastTag, setLastTag] = useState<RfidTag | null>(null);
   const [scanning, setScanning] = useState(false);
   const [whitelist, setWhitelist] = useState<string[]>(["04:A3:2B:9F", "DE:AD:BE:EF"]);
@@ -610,7 +620,7 @@ export function RfidSimulator({ onLog }: SimProps) {
         >
           <div className="flex items-center justify-center gap-2 mb-2">
             <Radio className={`w-5 h-5 ${scanning ? "text-amber-500" : "text-cyan-500"}`} />
-            <span className="font-mono text-sm font-semibold">MFRC522 13.56 MHz Reader</span>
+            <span className="font-mono text-sm font-semibold">{t.sim.rfidReader}</span>
           </div>
           {lastTag ? (
             <div className="space-y-2 mt-2">
@@ -622,7 +632,7 @@ export function RfidSimulator({ onLog }: SimProps) {
                 }`}
               >
                 {lastGranted ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                {lastGranted ? "ACCESS GRANTED" : "ACCESS DENIED"}
+                {lastGranted ? t.sim.accessGranted : t.sim.accessDenied}
               </div>
               <div className="font-mono text-lg font-bold tracking-widest text-amber-600 dark:text-amber-300 tabular-nums">
                 {lastTag.uid}
@@ -637,14 +647,14 @@ export function RfidSimulator({ onLog }: SimProps) {
             </div>
           ) : (
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-              Tap a virtual NFC/RFID tag on the right to simulate an SPI2 read transaction and inspect sector data.
+              {t.sim.rfidPrompt}
             </p>
           )}
         </div>
 
         <div className="space-y-2">
           <div className="text-xs font-semibold text-slate-600 dark:text-slate-400">
-            Virtual Tags (Tap to Scan or Toggle Whitelist)
+            {t.sim.virtualTags}
           </div>
           {RFID_TAGS.map((tag) => {
             const isAllowed = whitelist.includes(tag.uid);
@@ -654,7 +664,9 @@ export function RfidSimulator({ onLog }: SimProps) {
                 className="flex items-center justify-between gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800"
               >
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold truncate">{tag.name}</div>
+                  <div className="text-sm font-semibold truncate">
+                    {lang === "ro" ? tag.nameRo : tag.name}
+                  </div>
                   <div className="text-xs font-mono text-slate-500 dark:text-slate-400">
                     {tag.uid} · {tag.type}
                   </div>
@@ -668,16 +680,15 @@ export function RfidSimulator({ onLog }: SimProps) {
                         ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
                         : "border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400"
                     }`}
-                    title="Toggle NVS Access Whitelist"
                   >
-                    {isAllowed ? "Allowed" : "Blocked"}
+                    {isAllowed ? t.sim.allowed : t.sim.blocked}
                   </button>
                   <button
                     type="button"
                     onClick={() => tapTag(tag)}
                     className="px-2.5 py-1 rounded-md text-xs font-mono font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer"
                   >
-                    Tap
+                    {t.sim.tap}
                   </button>
                 </div>
               </div>
@@ -692,7 +703,7 @@ export function RfidSimulator({ onLog }: SimProps) {
 // ============================================================================
 // 4. BLE 5.0 GATT EXPLORER SIMULATOR
 // ============================================================================
-export function BleSimulator({ onLog }: SimProps) {
+export function BleSimulator({ t, onLog }: SimProps) {
   const [advertising, setAdvertising] = useState(true);
   const [connected, setConnected] = useState(true);
   const [txPower, setTxPower] = useState(3);
@@ -738,8 +749,8 @@ export function BleSimulator({ onLog }: SimProps) {
             aria-hidden="true"
           />
           <span className="font-mono text-xs text-slate-700 dark:text-slate-300">
-            {advertising ? "Advertising: ESP-Labs-S3" : "Radio Idle"} ·{" "}
-            {connected ? "Central Connected" : "Disconnected"}
+            {advertising ? t.sim.bleAdvertising : t.sim.bleIdle} ·{" "}
+            {connected ? t.sim.bleConnected : t.sim.bleDisconnected}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -748,7 +759,7 @@ export function BleSimulator({ onLog }: SimProps) {
             onClick={toggleConnect}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-violet-500 cursor-pointer"
           >
-            {connected ? "Disconnect Client" : "Simulate Connect"}
+            {connected ? t.sim.disconnectClient : t.sim.simulateConnect}
           </button>
           <button
             type="button"
@@ -759,19 +770,19 @@ export function BleSimulator({ onLog }: SimProps) {
                 : "bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-300"
             }`}
           >
-            {advertising ? "Stop Advertising" : "Start Advertising"}
+            {advertising ? t.sim.stopAdv : t.sim.startAdv}
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800">
-          <div className="text-[11px] text-slate-500 dark:text-slate-400">Primary GATT Service</div>
+          <div className="text-[11px] text-slate-500 dark:text-slate-400">{t.sim.primaryGatt}</div>
           <div className="font-mono text-sm text-violet-600 dark:text-violet-300 font-bold">0xFFE0</div>
-          <div className="text-[11px] font-mono text-slate-500">3 Characteristics</div>
+          <div className="text-[11px] font-mono text-slate-500">{t.sim.threeChars}</div>
         </div>
         <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800">
-          <div className="text-[11px] text-slate-500 dark:text-slate-400">Estimated RSSI</div>
+          <div className="text-[11px] text-slate-500 dark:text-slate-400">{t.sim.estRssi}</div>
           <div className="font-mono text-sm text-cyan-600 dark:text-cyan-300 font-bold tabular-nums">
             {rssi} dBm
           </div>
@@ -780,11 +791,11 @@ export function BleSimulator({ onLog }: SimProps) {
           </div>
         </div>
         <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800">
-          <div className="text-[11px] text-slate-500 dark:text-slate-400">GATT Notifications</div>
+          <div className="text-[11px] text-slate-500 dark:text-slate-400">{t.sim.gattNotify}</div>
           <div className="font-mono text-sm text-emerald-600 dark:text-emerald-300 font-bold tabular-nums">
-            {packets} frames
+            {packets} {t.sim.frames}
           </div>
-          <div className="text-[11px] font-mono text-slate-500">MTU: 247 bytes</div>
+          <div className="text-[11px] font-mono text-slate-500">MTU: 247 B</div>
         </div>
       </div>
 
@@ -792,8 +803,8 @@ export function BleSimulator({ onLog }: SimProps) {
       <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden text-xs font-mono">
         <div className="grid grid-cols-12 px-3 py-2 bg-slate-100 dark:bg-slate-950 text-slate-500 border-b border-slate-200 dark:border-slate-800">
           <span className="col-span-3">UUID</span>
-          <span className="col-span-4">Properties</span>
-          <span className="col-span-5 text-right">Value / Action</span>
+          <span className="col-span-4">{t.sim.properties}</span>
+          <span className="col-span-5 text-right">{t.sim.valueAction}</span>
         </div>
         <div className="grid grid-cols-12 items-center px-3 py-2 border-b border-slate-200/70 dark:border-slate-800/70">
           <span className="col-span-3 text-violet-600 dark:text-violet-300 font-semibold">0xFFE1</span>
@@ -816,7 +827,7 @@ export function BleSimulator({ onLog }: SimProps) {
               }}
               className="px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 hover:bg-violet-500/20 text-slate-800 dark:text-slate-200 cursor-pointer"
             >
-              Toggle
+              {t.sim.toggle}
             </button>
           </div>
         </div>
@@ -824,7 +835,7 @@ export function BleSimulator({ onLog }: SimProps) {
 
       <div>
         <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400 mb-1">
-          <span>RF TX Power</span>
+          <span>{t.sim.rfTxPower}</span>
           <span className="font-mono text-violet-600 dark:text-violet-300 tabular-nums">
             {txPower > 0 ? `+${txPower}` : txPower} dBm
           </span>
@@ -863,7 +874,7 @@ export function BleSimulator({ onLog }: SimProps) {
 // ============================================================================
 // 5. INTRO & WIFI SIMULATOR (GPIO48 RGB LED, BOOT BUTTON, 802.11n TELEMETRY)
 // ============================================================================
-export function WifiIntroSimulator({ onLog }: SimProps & { simType: SimType }) {
+export function WifiIntroSimulator({ t, onLog }: SimProps & { simType: SimType }) {
   const [ledColor, setLedColor] = useState("#22d3ee");
   const [blinking, setBlinking] = useState(false);
   const [blinkOn, setBlinkOn] = useState(true);
@@ -880,12 +891,12 @@ export function WifiIntroSimulator({ onLog }: SimProps & { simType: SimType }) {
     return () => window.clearInterval(id);
   }, [blinking]);
 
-  const colors = [
-    { name: "Cyan", hex: "#22d3ee" },
-    { name: "Emerald", hex: "#34d399" },
-    { name: "Amber", hex: "#fbbf24" },
-    { name: "Violet", hex: "#a78bfa" },
-    { name: "Off", hex: "#1e293b" },
+  const colors: { key: keyof Translations["sim"]["ledColors"]; hex: string }[] = [
+    { key: "Cyan", hex: "#22d3ee" },
+    { key: "Emerald", hex: "#34d399" },
+    { key: "Amber", hex: "#fbbf24" },
+    { key: "Violet", hex: "#a78bfa" },
+    { key: "Off", hex: "#1e293b" },
   ];
 
   const scanNetworks = () => {
@@ -912,7 +923,7 @@ export function WifiIntroSimulator({ onLog }: SimProps & { simType: SimType }) {
                 : "bg-slate-200/70 dark:bg-slate-800 border-transparent text-slate-600 dark:text-slate-400"
             }`}
           >
-            {blinking ? "Blinking" : "Solid"}
+            {blinking ? t.sim.blinking : t.sim.solid}
           </button>
         </div>
 
@@ -928,10 +939,10 @@ export function WifiIntroSimulator({ onLog }: SimProps & { simType: SimType }) {
             {colors.map((c) => (
               <button
                 type="button"
-                key={c.name}
+                key={c.key}
                 onClick={() => {
                   setLedColor(c.hex);
-                  onLog(`RMT WS2812 -> ${c.name} (${c.hex})`);
+                  onLog(`RMT WS2812 -> ${c.key} (${c.hex})`);
                 }}
                 className={`px-2 py-1 rounded text-[11px] font-medium border cursor-pointer ${
                   ledColor === c.hex
@@ -939,7 +950,7 @@ export function WifiIntroSimulator({ onLog }: SimProps & { simType: SimType }) {
                     : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200"
                 }`}
               >
-                {c.name}
+                {t.sim.ledColors[c.key]}
               </button>
             ))}
           </div>
@@ -971,7 +982,7 @@ export function WifiIntroSimulator({ onLog }: SimProps & { simType: SimType }) {
                 : "bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-300 border-amber-500/50"
             }`}
           >
-            Hold BOOT
+            {t.sim.holdBoot}
           </button>
         </div>
       </div>
@@ -1018,7 +1029,7 @@ export function WifiIntroSimulator({ onLog }: SimProps & { simType: SimType }) {
           <div className="flex justify-between">
             <span className="text-slate-500">RSSI:</span>
             <span className={connected ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}>
-              {connected ? "-52 dBm (Nominal)" : "Disconnected"}
+              {connected ? `-52 dBm (${t.sim.nominal})` : t.sim.bleDisconnected}
             </span>
           </div>
         </div>
@@ -1034,7 +1045,7 @@ export function WifiIntroSimulator({ onLog }: SimProps & { simType: SimType }) {
             }}
             className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30 hover:bg-sky-500/25 cursor-pointer"
           >
-            {connected ? "Disconnect" : "Reconnect"}
+            {connected ? t.sim.disconnect : t.sim.reconnect}
           </button>
           <button
             type="button"
@@ -1056,3 +1067,182 @@ export function WifiIntroSimulator({ onLog }: SimProps & { simType: SimType }) {
     </div>
   );
 }
+
+// ============================================================================
+// 6. IOT, SENSORS, ESP-NOW & DEEP-SLEEP SIMULATOR
+// ============================================================================
+export function IotSensorSimulator({ t, onLog }: SimProps) {
+  const [vbat, setVbat] = useState(3.92);
+  const [tempC, setTempC] = useState(23.4);
+  const [humidity, setHumidity] = useState(48);
+  const [sleepState, setSleepState] = useState<"active" | "ulp" | "deep">("active");
+  const [txCount, setTxCount] = useState(6);
+
+  const socPct = Math.max(0, Math.min(100, Math.round(((vbat - 3.2) / (4.2 - 3.2)) * 100)));
+  const adcRaw = Math.round(((vbat / 2) / 3.3) * 4095);
+  const currentDraw = sleepState === "deep" ? "7 µA" : sleepState === "ulp" ? "24 µA" : "42 mA";
+
+  const sendEspNowBurst = () => {
+    setSleepState("active");
+    setTxCount((c) => c + 1);
+    onLog(
+      `ESP-NOW TX #${txCount + 1} -> Peer [DC:54:75:C1:A2:08] {vbat:${vbat.toFixed(2)}V, temp:${tempC.toFixed(1)}C, rh:${humidity}%} (ACK 3.1 ms)`,
+    );
+  };
+
+  const triggerSleep = (mode: "ulp" | "deep") => {
+    setSleepState(mode);
+    if (mode === "deep") {
+      onLog("esp_deep_sleep_start(): RTC timer armed (600s) | draw ≈ 7 µA");
+    } else {
+      onLog("ulp_riscv_run(): HP CPU halted, LP-I2C polling SHT40 @ ~24 µA");
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800">
+          <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+            <BatteryCharging className="w-3.5 h-3.5 text-emerald-500" />
+            {t.sim.lipoGauge}
+          </div>
+          <div className="font-mono text-base font-bold text-emerald-600 dark:text-emerald-400 tabular-nums mt-0.5">
+            {vbat.toFixed(2)} V · {socPct}%
+          </div>
+          <div className="text-[11px] font-mono text-slate-500 tabular-nums">
+            ADC1_CH3 raw: {adcRaw}
+          </div>
+        </div>
+
+        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800">
+          <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+            <Thermometer className="w-3.5 h-3.5 text-cyan-500" />
+            {t.sim.lpI2cEnv}
+          </div>
+          <div className="font-mono text-base font-bold text-cyan-600 dark:text-cyan-400 tabular-nums mt-0.5">
+            {tempC.toFixed(1)} °C · {humidity}%
+          </div>
+          <div className="text-[11px] font-mono text-slate-500">SHT40 @ 0x44</div>
+        </div>
+
+        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800">
+          <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+            <Moon className="w-3.5 h-3.5 text-violet-500" />
+            {t.sim.powerDomain}
+          </div>
+          <div className="font-mono text-base font-bold text-violet-600 dark:text-violet-300 tabular-nums mt-0.5">
+            {currentDraw}
+          </div>
+          <div className="text-[11px] font-mono text-slate-500 uppercase">
+            {sleepState === "active"
+              ? t.sim.activeHpCore
+              : sleepState === "ulp"
+                ? "ULP / LP-Core"
+                : "Deep-Sleep"}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-2.5">
+          <div>
+            <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400 mb-1">
+              <span>{t.sim.lipoVoltage}</span>
+              <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                {vbat.toFixed(2)} V
+              </span>
+            </div>
+            <input
+              type="range"
+              min="3.2"
+              max="4.2"
+              step="0.02"
+              value={vbat}
+              onChange={(e) => setVbat(Number(e.target.value))}
+              className="w-full accent-emerald-500"
+            />
+          </div>
+          <div>
+            <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400 mb-1">
+              <span>{t.sim.ambientTemp}</span>
+              <span className="font-mono font-semibold text-cyan-600 dark:text-cyan-400 tabular-nums">
+                {tempC.toFixed(1)} °C
+              </span>
+            </div>
+            <input
+              type="range"
+              min="-10"
+              max="55"
+              step="0.5"
+              value={tempC}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                setTempC(val);
+                if (val > 30 && sleepState === "ulp") {
+                  setSleepState("active");
+                  onLog(`ULP Threshold Wake! Temp ${val.toFixed(1)}°C > 30.0°C -> Waking HP Core`);
+                }
+              }}
+              className="w-full accent-cyan-500"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2.5">
+          <div>
+            <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400 mb-1">
+              <span>{t.sim.relHumidity}</span>
+              <span className="font-mono font-semibold text-sky-600 dark:text-sky-400 tabular-nums">
+                {humidity}% RH
+              </span>
+            </div>
+            <input
+              type="range"
+              min="15"
+              max="95"
+              step="1"
+              value={humidity}
+              onChange={(e) => setHumidity(Number(e.target.value))}
+              className="w-full accent-sky-500"
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-2 pt-1">
+            <button
+              type="button"
+              onClick={sendEspNowBurst}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+            >
+              <Send className="w-3.5 h-3.5" />
+              {t.sim.espNowBurst} ({txCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => triggerSleep("ulp")}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-mono border cursor-pointer ${
+                sleepState === "ulp"
+                  ? "bg-violet-500/15 border-violet-500 text-violet-700 dark:text-violet-300"
+                  : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-violet-500"
+              }`}
+            >
+              {t.sim.ulpPoll}
+            </button>
+            <button
+              type="button"
+              onClick={() => triggerSleep("deep")}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-mono border cursor-pointer ${
+                sleepState === "deep"
+                  ? "bg-amber-500/15 border-amber-500 text-amber-700 dark:text-amber-300"
+                  : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-amber-500"
+              }`}
+            >
+              Deep-Sleep
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+

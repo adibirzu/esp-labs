@@ -33,6 +33,12 @@ const CHANNEL_PRESETS: Record<string, ChannelDef[]> = {
     { name: "ACK", color: "#34d399", rate: 2 },
     { name: "FPS", color: "#fbbf24", rate: 1 },
   ],
+  iot: [
+    { name: "ADC1", color: "#22d3ee", rate: 3, pseudo: true },
+    { name: "NOW", color: "#34d399", rate: 6, pseudo: true },
+    { name: "ULP", color: "#a78bfa", rate: 2 },
+    { name: "WAKE", color: "#fbbf24", rate: 1 },
+  ],
   default: [
     { name: "CLK", color: "#22d3ee", rate: 5 },
     { name: "TX0", color: "#34d399", rate: 3, pseudo: true },

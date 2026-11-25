@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { BookOpen, Check, ChevronLeft, ChevronRight, Compass, Copy } from "lucide-react";
 import { CODE_TOURS, GLOSSARY } from "../data/code";
+import { localizeCodeTour, localizeGlossary } from "../data/ro-overrides";
 import type { Translations } from "../i18n";
+import type { Lang } from "../types";
 
 interface CodeToursViewProps {
   t: Translations;
+  lang: Lang;
   initialTourId?: string | null;
   onTourChange?: (tourId: string) => void;
 }
@@ -23,7 +26,11 @@ const C_KEYWORDS = new Set([
   "const",
 ]);
 
-function renderCodeLine(line: string, onTokenClick: (key: string) => void) {
+function renderCodeLine(
+  line: string,
+  onTokenClick: (key: string) => void,
+  glossaryTooltip: string,
+) {
   const commentIdx = line.indexOf("//");
   const codePart = commentIdx >= 0 ? line.slice(0, commentIdx) : line;
   const commentPart = commentIdx >= 0 ? line.slice(commentIdx) : "";
@@ -43,7 +50,7 @@ function renderCodeLine(line: string, onTokenClick: (key: string) => void) {
               type="button"
               onClick={() => onTokenClick(tok)}
               className="underline decoration-dotted decoration-cyan-400 underline-offset-4 text-cyan-300 hover:bg-cyan-500/20 rounded px-0.5 transition-colors font-semibold cursor-pointer"
-              title="Click for ESP-IDF Glossary"
+              title={glossaryTooltip}
             >
               {tok}
             </button>
@@ -84,7 +91,7 @@ function renderCodeLine(line: string, onTokenClick: (key: string) => void) {
   );
 }
 
-export function CodeToursView({ t, initialTourId, onTourChange }: CodeToursViewProps) {
+export function CodeToursView({ t, lang, initialTourId, onTourChange }: CodeToursViewProps) {
   const [tourId, setTourId] = useState(initialTourId || CODE_TOURS[0].id);
   const [stepIdx, setStepIdx] = useState(0);
   const [glossaryKey, setGlossaryKey] = useState("gpio_config_t");
@@ -97,10 +104,13 @@ export function CodeToursView({ t, initialTourId, onTourChange }: CodeToursViewP
     }
   }, [initialTourId]);
 
-  const tour = CODE_TOURS.find((x) => x.id === tourId) ?? CODE_TOURS[0];
+  const rawTour = CODE_TOURS.find((x) => x.id === tourId) ?? CODE_TOURS[0];
+  const tour = localizeCodeTour(rawTour, lang);
   const step = tour.steps[stepIdx] ?? tour.steps[0];
   const lines = tour.code.split("\n");
-  const glossaryItem = glossaryKey ? GLOSSARY[glossaryKey] : null;
+  const rawGlossaryItem = glossaryKey ? GLOSSARY[glossaryKey] : null;
+  const glossaryItem =
+    rawGlossaryItem && glossaryKey ? localizeGlossary(glossaryKey, rawGlossaryItem, lang) : null;
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -128,20 +138,23 @@ export function CodeToursView({ t, initialTourId, onTourChange }: CodeToursViewP
     <div className="space-y-5">
       {/* Tour Selector */}
       <div className="flex flex-wrap gap-2">
-        {CODE_TOURS.map((ct) => (
-          <button
-            type="button"
-            key={ct.id}
-            onClick={() => selectTour(ct.id)}
-            className={`px-3.5 py-2 rounded-lg text-xs font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
-              tourId === ct.id
-                ? "bg-cyan-600 dark:bg-cyan-500 text-white dark:text-slate-950 border-cyan-600 dark:border-cyan-400"
-                : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-400"
-            }`}
-          >
-            {ct.title}
-          </button>
-        ))}
+        {CODE_TOURS.map((rawCt) => {
+          const ct = localizeCodeTour(rawCt, lang);
+          return (
+            <button
+              type="button"
+              key={ct.id}
+              onClick={() => selectTour(ct.id)}
+              className={`px-3.5 py-2 rounded-lg text-xs font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
+                tourId === ct.id
+                  ? "bg-cyan-600 dark:bg-cyan-500 text-white dark:text-slate-950 border-cyan-600 dark:border-cyan-400"
+                  : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-400"
+              }`}
+            >
+              {ct.title}
+            </button>
+          );
+        })}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
@@ -157,7 +170,7 @@ export function CodeToursView({ t, initialTourId, onTourChange }: CodeToursViewP
                 className="flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-mono cursor-pointer"
               >
                 {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                {copied ? t.copied : "Copy"}
+                {copied ? t.copied : t.copy}
               </button>
             </div>
           </div>
@@ -180,7 +193,9 @@ export function CodeToursView({ t, initialTourId, onTourChange }: CodeToursViewP
                   >
                     {lineNum}
                   </span>
-                  <span className="whitespace-pre">{renderCodeLine(line, setGlossaryKey)}</span>
+                  <span className="whitespace-pre">
+                    {renderCodeLine(line, setGlossaryKey, t.glossaryTooltip)}
+                  </span>
                 </div>
               );
             })}
@@ -207,7 +222,7 @@ export function CodeToursView({ t, initialTourId, onTourChange }: CodeToursViewP
 
             <div>
               <div className="text-xs font-mono text-amber-600 dark:text-amber-400 mb-1 tabular-nums">
-                Lines {step.lines[0]}–{step.lines[1]}
+                {t.linesLabel} {step.lines[0]}–{step.lines[1]}
               </div>
               <h2 className="text-base font-bold mb-2">{step.title}</h2>
               <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
@@ -231,7 +246,7 @@ export function CodeToursView({ t, initialTourId, onTourChange }: CodeToursViewP
                     type="button"
                     key={i}
                     onClick={() => setStepIdx(i)}
-                    aria-label={`Go to step ${i + 1}`}
+                    aria-label={`${t.step} ${i + 1}`}
                     className={`w-2.5 h-2.5 rounded-full cursor-pointer ${
                       i === stepIdx ? "bg-cyan-500" : "bg-slate-300 dark:bg-slate-700"
                     }`}
@@ -256,7 +271,7 @@ export function CodeToursView({ t, initialTourId, onTourChange }: CodeToursViewP
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold flex items-center gap-2 text-violet-600 dark:text-violet-400">
                   <BookOpen className="w-4 h-4" />
-                  ESP-IDF API Glossary
+                  {t.apiGlossary}
                 </span>
                 <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
                   {glossaryItem.category}
@@ -269,7 +284,7 @@ export function CodeToursView({ t, initialTourId, onTourChange }: CodeToursViewP
                 {glossaryItem.desc}
               </p>
               <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-800 dark:text-emerald-300">
-                <span className="font-semibold">Pro Tip: </span>
+                <span className="font-semibold">{t.proTip}: </span>
                 {glossaryItem.tip}
               </div>
             </div>

@@ -7,11 +7,19 @@ import {
   POWER_PRESETS,
   REGISTERS,
 } from "../data/chip";
+import {
+  localizeChipBlock,
+  localizeMemoryRegion,
+  localizePowerMode,
+  localizePowerPresetLabel,
+  localizeRegister,
+} from "../data/ro-overrides";
 import type { Translations } from "../i18n";
-import type { RegisterField } from "../types";
+import type { Lang, RegisterField } from "../types";
 
 interface ChipAtlasViewProps {
   t: Translations;
+  lang: Lang;
   onOpenLabCode: (code: string) => void;
   initialRegId?: string | null;
   initialBlockId?: string | null;
@@ -27,6 +35,7 @@ function formatBinaryNibbles(val: number): string {
 
 export function ChipAtlasView({
   t,
+  lang,
   onOpenLabCode,
   initialRegId,
   initialBlockId,
@@ -35,8 +44,8 @@ export function ChipAtlasView({
   onRegChange,
 }: ChipAtlasViewProps) {
   const [blockFilter, setBlockFilter] = useState("All");
-  const [selectedBlock, setSelectedBlock] = useState(
-    () => CHIP_BLOCKS.find((b) => b.id === initialBlockId) ?? CHIP_BLOCKS[0],
+  const [selectedBlockId, setSelectedBlockId] = useState(
+    () => CHIP_BLOCKS.find((b) => b.id === initialBlockId)?.id ?? CHIP_BLOCKS[0].id,
   );
   const [selectedRegId, setSelectedRegId] = useState(initialRegId || REGISTERS[0].id);
   const [regValues, setRegValues] = useState<Record<string, number>>(() =>
@@ -59,7 +68,7 @@ export function ChipAtlasView({
       const found = CHIP_BLOCKS.find((b) => b.id === initialBlockId);
       if (found) {
         setBlockFilter("All");
-        setSelectedBlock(found);
+        setSelectedBlockId(found.id);
         atlasSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       }
     }
@@ -81,14 +90,23 @@ export function ChipAtlasView({
     "Security",
     "Low Power",
     "Data",
-  ];
+  ] as const;
 
-  const filteredBlocks =
+  const filteredBlocks = (
     blockFilter === "All"
       ? CHIP_BLOCKS
-      : CHIP_BLOCKS.filter((b) => b.category === blockFilter);
+      : CHIP_BLOCKS.filter((b) => b.category === blockFilter)
+  ).map((b) => localizeChipBlock(b, lang));
 
-  const activeReg = REGISTERS.find((r) => r.id === selectedRegId) ?? REGISTERS[0];
+  const selectedBlock = localizeChipBlock(
+    CHIP_BLOCKS.find((b) => b.id === selectedBlockId) ?? CHIP_BLOCKS[0],
+    lang,
+  );
+
+  const activeReg = localizeRegister(
+    REGISTERS.find((r) => r.id === selectedRegId) ?? REGISTERS[0],
+    lang,
+  );
   const regVal = (regValues[activeReg.id] ?? activeReg.defaultVal) >>> 0;
 
   const toggleBit = (bit: number) => {
@@ -104,10 +122,10 @@ export function ChipAtlasView({
   const runtimeHours = batteryMah / Math.max(avgCurrentMa, 0.001);
   const runtimeLabel =
     runtimeHours >= 720
-      ? `${(runtimeHours / 720).toFixed(1)} months`
+      ? `${(runtimeHours / 720).toFixed(1)} ${t.unitMonths}`
       : runtimeHours >= 48
-        ? `${(runtimeHours / 24).toFixed(1)} days`
-        : `${runtimeHours.toFixed(1)} hours`;
+        ? `${(runtimeHours / 24).toFixed(1)} ${t.unitDays}`
+        : `${runtimeHours.toFixed(1)} ${t.unitHours}`;
 
   return (
     <div className="space-y-8">
@@ -130,7 +148,7 @@ export function ChipAtlasView({
                     : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-400"
                 }`}
               >
-                {cat === "All" ? t.filterAll : cat}
+                {cat === "All" ? t.filterAll : t.chipCategories[cat]}
               </button>
             ))}
           </div>
@@ -143,7 +161,7 @@ export function ChipAtlasView({
                 type="button"
                 key={b.id}
                 onClick={() => {
-                  setSelectedBlock(b);
+                  setSelectedBlockId(b.id);
                   onBlockChange?.(b.id);
                 }}
                 className={`p-4 rounded-xl border text-left transition-colors cursor-pointer ${
@@ -153,7 +171,9 @@ export function ChipAtlasView({
                 }`}
               >
                 <div className="flex items-center justify-between text-[11px] font-mono mb-1">
-                  <span className="text-cyan-600 dark:text-cyan-400 font-semibold">{b.category}</span>
+                  <span className="text-cyan-600 dark:text-cyan-400 font-semibold">
+                    {t.chipCategories[b.category as keyof typeof t.chipCategories] ?? b.category}
+                  </span>
                   <span className="text-slate-500 dark:text-slate-400">{b.freq}</span>
                 </div>
                 <div className="font-bold text-sm mb-1">{b.name}</div>
@@ -166,7 +186,9 @@ export function ChipAtlasView({
           <div className="lg:col-span-5 p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 space-y-4">
             <div>
               <div className="text-xs font-mono text-cyan-600 dark:text-cyan-400">
-                {selectedBlock.category} · {selectedBlock.freq}
+                {t.chipCategories[selectedBlock.category as keyof typeof t.chipCategories] ??
+                  selectedBlock.category}{" "}
+                · {selectedBlock.freq}
               </div>
               <h2 className="text-xl font-bold mt-1">{selectedBlock.name}</h2>
               <p className="text-sm mt-1.5 text-slate-600 dark:text-slate-300 leading-relaxed">
@@ -176,7 +198,7 @@ export function ChipAtlasView({
 
             <div>
               <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">
-                Key Specifications
+                {t.keySpecs}
               </div>
               <ul className="space-y-1.5">
                 {selectedBlock.specs.map((s, i) => (
@@ -188,7 +210,7 @@ export function ChipAtlasView({
             </div>
 
             <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-800 dark:text-amber-300">
-              <span className="font-semibold">Hardware Gotcha: </span>
+              <span className="font-semibold">{t.hardwareGotcha}: </span>
               {selectedBlock.gotcha}
             </div>
 
@@ -246,21 +268,21 @@ export function ChipAtlasView({
         {/* Live Readouts */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 font-mono text-xs">
           <div className="p-3 rounded-lg bg-[#060a12] border border-slate-800">
-            <div className="text-slate-400">Address</div>
+            <div className="text-slate-400">{t.regAddress}</div>
             <div className="text-amber-300 text-sm font-bold tabular-nums">{activeReg.address}</div>
           </div>
           <div className="p-3 rounded-lg bg-[#060a12] border border-slate-800">
-            <div className="text-slate-400">Hex Value</div>
+            <div className="text-slate-400">{t.regHex}</div>
             <div className="text-cyan-300 text-sm font-bold tabular-nums">
               0x{regVal.toString(16).toUpperCase().padStart(8, "0")}
             </div>
           </div>
           <div className="p-3 rounded-lg bg-[#060a12] border border-slate-800">
-            <div className="text-slate-400">Decimal</div>
+            <div className="text-slate-400">{t.regDecimal}</div>
             <div className="text-emerald-300 text-sm font-bold tabular-nums">{regVal}</div>
           </div>
           <div className="p-3 rounded-lg bg-[#060a12] border border-slate-800">
-            <div className="text-slate-400">Binary (31..0)</div>
+            <div className="text-slate-400">{t.regBinary}</div>
             <div className="text-slate-200 text-[11px] font-medium tabular-nums truncate" title={formatBinaryNibbles(regVal)}>
               {formatBinaryNibbles(regVal)}
             </div>
@@ -303,7 +325,7 @@ export function ChipAtlasView({
           <span>
             {hoveredBit
               ? `Bit ${hoveredBit.bit} (${hoveredBit.name}): ${hoveredBit.desc}`
-              : "Click any bit above to toggle 0/1 and observe live register hex and binary updates."}
+              : t.regHint}
           </span>
           <div className="flex items-center gap-3 shrink-0">
             <button
@@ -336,32 +358,36 @@ export function ChipAtlasView({
             {t.memoryMap}
           </h3>
           <div className="flex h-7 rounded-lg overflow-hidden border border-slate-300 dark:border-slate-800">
-            {MEMORY_REGIONS.map((m) => (
-              <button
-                type="button"
-                key={m.name}
-                onMouseEnter={() => setActiveMemRegion(m.name)}
-                onMouseLeave={() => setActiveMemRegion(null)}
-                onClick={() =>
-                  setActiveMemRegion((cur) => (cur === m.name ? null : m.name))
-                }
-                className={`${m.color} transition-opacity cursor-pointer ${
-                  activeMemRegion && activeMemRegion !== m.name ? "opacity-45" : "opacity-100"
-                }`}
-                style={{ width: m.width }}
-                title={`${m.name} (${m.size})`}
-                aria-label={`${m.name} ${m.size}`}
-              />
-            ))}
+            {MEMORY_REGIONS.map((rawM) => {
+              const m = localizeMemoryRegion(rawM, lang);
+              return (
+                <button
+                  type="button"
+                  key={rawM.name}
+                  onMouseEnter={() => setActiveMemRegion(rawM.name)}
+                  onMouseLeave={() => setActiveMemRegion(null)}
+                  onClick={() =>
+                    setActiveMemRegion((cur) => (cur === rawM.name ? null : rawM.name))
+                  }
+                  className={`${m.color} transition-opacity cursor-pointer ${
+                    activeMemRegion && activeMemRegion !== rawM.name ? "opacity-45" : "opacity-100"
+                  }`}
+                  style={{ width: m.width }}
+                  title={`${m.name} (${m.size})`}
+                  aria-label={`${m.name} ${m.size}`}
+                />
+              );
+            })}
           </div>
 
           <div className="space-y-2">
-            {MEMORY_REGIONS.map((m) => {
-              const highlighted = activeMemRegion === m.name;
+            {MEMORY_REGIONS.map((rawM) => {
+              const m = localizeMemoryRegion(rawM, lang);
+              const highlighted = activeMemRegion === rawM.name;
               return (
                 <div
-                  key={m.name}
-                  onMouseEnter={() => setActiveMemRegion(m.name)}
+                  key={rawM.name}
+                  onMouseEnter={() => setActiveMemRegion(rawM.name)}
                   onMouseLeave={() => setActiveMemRegion(null)}
                   className={`p-3 rounded-lg border text-xs transition-colors ${
                     highlighted
@@ -408,40 +434,43 @@ export function ChipAtlasView({
                   }}
                   className="px-2.5 py-1 rounded-md text-[11px] font-medium border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/60 hover:border-emerald-500 transition-colors cursor-pointer"
                 >
-                  {preset.label}
+                  {localizePowerPresetLabel(preset.label, lang)}
                 </button>
               ))}
             </div>
 
             <div className="grid grid-cols-2 gap-2">
-              {POWER_MODES.map((pm) => (
-                <button
-                  type="button"
-                  key={pm.id}
-                  onClick={() => setSleepModeId(pm.id)}
-                  className={`p-3 rounded-lg border text-left transition-colors cursor-pointer ${
-                    sleepModeId === pm.id
-                      ? "bg-emerald-500/15 border-emerald-500"
-                      : "bg-slate-50 dark:bg-slate-950/60 border-slate-200 dark:border-slate-800 hover:border-slate-400"
-                  }`}
-                >
-                  <div className="text-xs font-bold">{pm.name}</div>
-                  <div className="font-mono text-xs text-emerald-600 dark:text-emerald-400 mt-0.5 tabular-nums">
-                    {pm.currentMa >= 1
-                      ? `~${pm.currentMa} mA`
-                      : `~${Math.round(pm.currentMa * 1000)} µA`}
-                  </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-1">
-                    {pm.desc}
-                  </div>
-                </button>
-              ))}
+              {POWER_MODES.map((rawPm) => {
+                const pm = localizePowerMode(rawPm, lang);
+                return (
+                  <button
+                    type="button"
+                    key={pm.id}
+                    onClick={() => setSleepModeId(pm.id)}
+                    className={`p-3 rounded-lg border text-left transition-colors cursor-pointer ${
+                      sleepModeId === pm.id
+                        ? "bg-emerald-500/15 border-emerald-500"
+                        : "bg-slate-50 dark:bg-slate-950/60 border-slate-200 dark:border-slate-800 hover:border-slate-400"
+                    }`}
+                  >
+                    <div className="text-xs font-bold">{pm.name}</div>
+                    <div className="font-mono text-xs text-emerald-600 dark:text-emerald-400 mt-0.5 tabular-nums">
+                      {pm.currentMa >= 1
+                        ? `~${pm.currentMa} mA`
+                        : `~${Math.round(pm.currentMa * 1000)} µA`}
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-1">
+                      {pm.desc}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
 
             <div className="space-y-3 pt-1">
               <div>
                 <div className="flex justify-between text-xs mb-1">
-                  <span className="text-slate-600 dark:text-slate-400">LiPo Battery Capacity</span>
+                  <span className="text-slate-600 dark:text-slate-400">{t.lipoCapacity}</span>
                   <span className="font-mono text-cyan-600 dark:text-cyan-400 font-bold tabular-nums">
                     {batteryMah} mAh
                   </span>
@@ -460,7 +489,7 @@ export function ChipAtlasView({
               <div>
                 <div className="flex justify-between text-xs mb-1">
                   <span className="text-slate-600 dark:text-slate-400">
-                    Active Duty Cycle (95 mA RF bursts)
+                    {t.activeDutyCycle}
                   </span>
                   <span className="font-mono text-amber-600 dark:text-amber-400 font-bold tabular-nums">
                     {dutyCycle}%
@@ -481,7 +510,7 @@ export function ChipAtlasView({
 
           <div className="p-4 rounded-xl bg-[#060a12] border border-slate-800 grid grid-cols-2 gap-4 text-center">
             <div>
-              <div className="text-[11px] font-mono text-slate-400">Average Current</div>
+              <div className="text-[11px] font-mono text-slate-400">{t.avgCurrent}</div>
               <div className="text-xl font-mono font-bold text-amber-300 mt-1 tabular-nums">
                 {avgCurrentMa >= 1
                   ? `${avgCurrentMa.toFixed(2)} mA`
@@ -489,7 +518,7 @@ export function ChipAtlasView({
               </div>
             </div>
             <div>
-              <div className="text-[11px] font-mono text-slate-400">Estimated Runtime</div>
+              <div className="text-[11px] font-mono text-slate-400">{t.estimatedRuntime}</div>
               <div className="text-xl font-mono font-bold text-emerald-400 mt-1 tabular-nums">
                 {runtimeLabel}
               </div>

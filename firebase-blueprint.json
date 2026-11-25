@@ -1,0 +1,153 @@
+{
+  "entities": {
+    "PrivateProfile": {
+      "title": "Private User Profile",
+      "description": "Authenticated user's private Google SSO profile (isolated to owner only for PII protection).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "photoURL": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "displayName", "createdAt", "updatedAt"]
+    },
+    "PrivateInventory": {
+      "title": "Private Hardware Inventory & 3D Bench State",
+      "description": "Owner-only hardware catalog quantities, saved 3D workbench layout, and synced lab progress.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownedParts": {
+          "type": "object",
+          "description": "Map of hardware catalog part IDs to integer quantities (0-999, max 60 entries)."
+        },
+        "customParts": {
+          "type": "array",
+          "description": "Legacy/quick custom part names (max 40 entries, each max 80 chars)."
+        },
+        "completedLabs": {
+          "type": "array",
+          "description": "Completed lab IDs synced across devices (max 60 entries)."
+        },
+        "savedIdeaIds": {
+          "type": "array",
+          "description": "Bookmarked project idea IDs (max 40 entries)."
+        },
+        "benchLayout": {
+          "type": "object",
+          "description": "Saved 3D positions and rotations for boards on the 3D workbench (max 12 boards)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["ownerId", "ownedParts", "customParts", "completedLabs", "savedIdeaIds", "createdAt", "updatedAt"]
+    },
+    "CustomHardwareItem": {
+      "title": "Custom Hardware Component with Photo",
+      "description": "Owner-only custom hardware part added via camera/photo upload and saved to the user's cloud DB.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "category": {
+          "type": "string",
+          "enum": ["boards", "wireless", "display-audio", "sensors", "power-proto"]
+        },
+        "quantity": {
+          "type": "number"
+        },
+        "voltage": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "interfaceSpec": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "photoDataUrl": {
+          "type": "string",
+          "maxLength": 140000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "ownerId", "name", "category", "quantity", "voltage", "interfaceSpec", "notes", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/private/profile": {
+      "schema": { "$ref": "#/entities/PrivateProfile" },
+      "description": "Owner-only private profile document storing Google SSO email and display name."
+    },
+    "/users/{userId}/private/inventory": {
+      "schema": { "$ref": "#/entities/PrivateInventory" },
+      "description": "Owner-only hardware inventory, 3D bench layout, and synced lab progress."
+    },
+    "/users/{userId}/custom_parts/{partId}": {
+      "schema": { "$ref": "#/entities/CustomHardwareItem" },
+      "description": "Owner-only subcollection of user-added hardware parts with compressed JPEG hardware photos."
+    }
+  }
+}

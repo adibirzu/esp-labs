@@ -10,11 +10,13 @@ import {
   Wand2,
 } from "lucide-react";
 import { ALL_PINS, LEFT_PINS, PERIPHERAL_MODULES, RIGHT_PINS } from "../data/pinout";
+import { localizeModule, localizePin } from "../data/ro-overrides";
 import type { Translations } from "../i18n";
-import type { PinDef } from "../types";
+import type { Lang, PinDef } from "../types";
 
 interface PinoutViewProps {
   t: Translations;
+  lang: Lang;
   initialPinId?: string | null;
   focusNonce?: number;
   onPinChange?: (pin: PinDef) => void;
@@ -27,7 +29,7 @@ interface PinConflict {
   detail: string;
 }
 
-export function PinoutView({ t, initialPinId, focusNonce, onPinChange }: PinoutViewProps) {
+export function PinoutView({ t, lang, initialPinId, focusNonce, onPinChange }: PinoutViewProps) {
   const [filter, setFilter] = useState("all");
   const [selectedPin, setSelectedPin] = useState<PinDef>(
     () => ALL_PINS.find((p) => p.id === initialPinId) ?? RIGHT_PINS[13],
@@ -53,29 +55,30 @@ export function PinoutView({ t, initialPinId, focusNonce, onPinChange }: PinoutV
 
   const filters = [
     { id: "all", label: t.filterAll },
-    { id: "power", label: "Power" },
-    { id: "strapping", label: "Strapping" },
-    { id: "adc", label: "ADC" },
-    { id: "spi", label: "SPI" },
-    { id: "i2c", label: "I2C" },
-    { id: "i2s", label: "I2S" },
-    { id: "uart", label: "UART" },
-    { id: "touch", label: "Touch" },
-    { id: "usb", label: "USB" },
-    { id: "psram", label: "PSRAM" },
+    { id: "power", label: t.pinFilters.power },
+    { id: "strapping", label: t.pinFilters.strapping },
+    { id: "adc", label: t.pinFilters.adc },
+    { id: "spi", label: t.pinFilters.spi },
+    { id: "i2c", label: t.pinFilters.i2c },
+    { id: "i2s", label: t.pinFilters.i2s },
+    { id: "uart", label: t.pinFilters.uart },
+    { id: "touch", label: t.pinFilters.touch },
+    { id: "usb", label: t.pinFilters.usb },
+    { id: "psram", label: t.pinFilters.psram },
   ];
 
   const effectiveModules = useMemo(
     () =>
-      PERIPHERAL_MODULES.map((mod) =>
-        mod.id === "rfid" && rfidResetRemapped
+      PERIPHERAL_MODULES.map((rawMod) => {
+        const mod = localizeModule(rawMod, lang);
+        return mod.id === "rfid" && rfidResetRemapped
           ? {
               ...mod,
               pins: mod.pins.map((p) => (p.role === "RFID_RST" ? { ...p, gpio: 21 } : p)),
             }
-          : mod,
-      ),
-    [rfidResetRemapped],
+          : mod;
+      }),
+    [rfidResetRemapped, lang],
   );
 
   const pinAssignments = useMemo(() => {
@@ -99,30 +102,31 @@ export function PinoutView({ t, initialPinId, focusNonce, onPinChange }: PinoutV
         issues.push({
           severity: "error",
           gpio,
-          title: `GPIO${gpio} Pin Collision`,
-          detail: `Shared by ${list.map((x) => `${x.role} (${x.module})`).join(" & ")}`,
+          title: `GPIO${gpio} ${t.pinCollisionTitle}`,
+          detail: `${t.sharedByLabel}: ${list.map((x) => `${x.role} (${x.module})`).join(" & ")}`,
         });
       }
-      const pinObj = ALL_PINS.find((p) => p.gpio === gpio);
+      const rawPinObj = ALL_PINS.find((p) => p.gpio === gpio);
+      const pinObj = rawPinObj ? localizePin(rawPinObj, lang) : undefined;
       if (pinObj?.types.includes("psram")) {
         issues.push({
           severity: "error",
           gpio,
-          title: `GPIO${gpio} Octal PSRAM Hazard`,
-          detail: `Assigned to ${list[0].role}, but GPIO35–37 are reserved for Octal PSRAM on N8R8/N16R8 boards.`,
+          title: `GPIO${gpio} ${t.psramHazardTitle}`,
+          detail: `${list[0].role} — ${t.psramHazardDetail}`,
         });
       }
       if (pinObj?.types.includes("strapping")) {
         issues.push({
           severity: "warn",
           gpio,
-          title: `GPIO${gpio} Strapping Pin Warning`,
-          detail: `${list[0].role} uses a boot strapping pin (${pinObj.strapping}).`,
+          title: `GPIO${gpio} ${t.strappingWarnTitle}`,
+          detail: `${list[0].role} ${t.strappingWarnDetail} (${pinObj.strapping}).`,
         });
       }
     });
     return issues;
-  }, [pinAssignments]);
+  }, [pinAssignments, lang, t]);
 
   const hasGpio9Collision = conflicts.some((c) => c.gpio === 9 && c.severity === "error");
 
@@ -174,8 +178,13 @@ export function PinoutView({ t, initialPinId, focusNonce, onPinChange }: PinoutV
     return "#22d3ee";
   };
 
+  const localizedSelectedPin = useMemo(
+    () => localizePin(selectedPin, lang),
+    [selectedPin, lang],
+  );
+
   const selectedAssignments =
-    selectedPin.gpio !== null ? pinAssignments[selectedPin.gpio] ?? [] : [];
+    localizedSelectedPin.gpio !== null ? pinAssignments[localizedSelectedPin.gpio] ?? [] : [];
 
   return (
     <div className="space-y-5">
@@ -368,11 +377,13 @@ export function PinoutView({ t, initialPinId, focusNonce, onPinChange }: PinoutV
               )}
             </div>
 
-            <p className="text-sm text-slate-700 dark:text-slate-300">{selectedPin.notes}</p>
+            <p className="text-sm text-slate-700 dark:text-slate-300">
+              {localizedSelectedPin.notes}
+            </p>
 
             {selectedAssignments.length > 0 && (
               <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 text-xs font-mono">
-                <span className="text-slate-500 mr-2">Active assignment:</span>
+                <span className="text-slate-500 mr-2">{t.activeAssignment}:</span>
                 {selectedAssignments.map((a, idx) => (
                   <span key={a.role} className="text-cyan-600 dark:text-cyan-300 font-semibold">
                     {idx > 0 ? " + " : ""}
@@ -382,19 +393,19 @@ export function PinoutView({ t, initialPinId, focusNonce, onPinChange }: PinoutV
               </div>
             )}
 
-            {selectedPin.strapping && (
+            {localizedSelectedPin.strapping && (
               <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-800 dark:text-amber-300">
-                <span className="font-semibold">Strapping Behavior: </span>
-                {selectedPin.strapping}
+                <span className="font-semibold">{t.strappingBehavior}: </span>
+                {localizedSelectedPin.strapping}
               </div>
             )}
 
-            {selectedPin.gotcha && (
+            {localizedSelectedPin.gotcha && (
               <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-xs text-rose-700 dark:text-rose-300 flex gap-2">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-semibold">Hardware Gotcha: </span>
-                  {selectedPin.gotcha}
+                  <span className="font-semibold">{t.hardwareGotcha}: </span>
+                  {localizedSelectedPin.gotcha}
                 </div>
               </div>
             )}
@@ -414,7 +425,7 @@ export function PinoutView({ t, initialPinId, focusNonce, onPinChange }: PinoutV
                     : "text-emerald-600 dark:text-emerald-400"
                 }`}
               >
-                {conflicts.length > 0 ? `▲ ${conflicts.length} Issue(s)` : "● Nominal"}
+                {conflicts.length > 0 ? `▲ ${conflicts.length} ${t.issuesLabel}` : `● ${t.nominalLabel}`}
               </span>
             </div>
 

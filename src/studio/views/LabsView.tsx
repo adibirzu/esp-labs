@@ -6,35 +6,45 @@ import {
   ChevronRight,
   Circle,
   Code2,
+  Download,
   Pause,
   Play,
   RotateCcw,
   Search,
   Terminal,
+  Upload,
   Wrench,
 } from "lucide-react";
+import { ConfettiBurst, type ConfettiBurstEvent } from "../components/ConfettiBurst";
 import { LogicAnalyzerCanvas } from "../components/LogicAnalyzerCanvas";
 import {
   BleSimulator,
   DisplaySimulator,
+  IotSensorSimulator,
   RfidSimulator,
   SoundSimulator,
   WifiIntroSimulator,
 } from "../components/Simulators";
+import { OFFICIAL_ESP_BOARDS } from "../data/boards";
 import { LABS, TRACKS } from "../data/labs";
+import { localizeLab, localizeTrack } from "../data/ro-overrides";
 import type { Translations } from "../i18n";
-import type { TrackId } from "../types";
+import { parseProgressBackup, serializeProgressBackup } from "../logic/progress-io";
+import type { Lang, TrackId } from "../types";
 
 interface LabsViewProps {
   t: Translations;
+  lang: Lang;
   completedLabs: string[];
   toggleComplete: (id: string) => void;
   resetProgress: () => void;
+  restoreProgress: (labIds: string[]) => void;
   activeTrack: "all" | TrackId;
   setActiveTrack: (track: "all" | TrackId) => void;
   selectedLabId: string | null;
   setSelectedLabId: (id: string | null) => void;
   onOpenCodeTour: (tourId: string) => void;
+  onOpenBoard: (boardId: string) => void;
 }
 
 interface LogLine {
@@ -45,21 +55,80 @@ interface LogLine {
 
 export function LabsView({
   t,
+  lang,
   completedLabs,
   toggleComplete,
   resetProgress,
+  restoreProgress,
   activeTrack,
   setActiveTrack,
   selectedLabId,
   setSelectedLabId,
   onOpenCodeTour,
+  onOpenBoard,
 }: LabsViewProps) {
   const [query, setQuery] = useState("");
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [serialInput, setSerialInput] = useState("");
   const [analyzerRunning, setAnalyzerRunning] = useState(true);
   const [analyzerSpeed, setAnalyzerSpeed] = useState(1);
+  const [progressNotice, setProgressNotice] = useState<{
+    kind: "success" | "error";
+    text: string;
+  } | null>(null);
+  const [confettiBurst, setConfettiBurst] = useState<ConfettiBurstEvent | null>(null);
   const logContainerRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleDownloadProgress = () => {
+    const json = serializeProgressBackup(completedLabs, LABS);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `esp-labs-progress-${dateStamp}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setProgressNotice({
+      kind: "success",
+      text: `${t.progressExported} (${completedLabs.length}/${LABS.length})`,
+    });
+  };
+
+  const handleRestoreFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const content = typeof reader.result === "string" ? reader.result : "";
+      const result = parseProgressBackup(content, LABS);
+      if (!result.ok) {
+        setProgressNotice({
+          kind: "error",
+          text:
+            result.reason === "invalid-json"
+              ? t.progressInvalidJson
+              : t.progressInvalidSchema,
+        });
+        return;
+      }
+      restoreProgress(result.completedLabs);
+      setProgressNotice({
+        kind: "success",
+        text: `${t.progressRestored}: ${result.completedLabs.length} / ${LABS.length} ${t.completed}`,
+      });
+    };
+    reader.onerror = () => {
+      setProgressNotice({
+        kind: "error",
+        text: t.progressInvalidJson,
+      });
+    };
+    reader.readAsText(file);
+  };
 
   const [checkedWires, setCheckedWires] = useState<Record<string, boolean>>(() => {
     try {
@@ -78,10 +147,10 @@ export function LabsView({
     }
   }, [checkedWires]);
 
-  const selectedLab = useMemo(
-    () => LABS.find((l) => l.id === selectedLabId) ?? null,
-    [selectedLabId],
-  );
+  const selectedLab = useMemo(() => {
+    const raw = LABS.find((l) => l.id === selectedLabId);
+    return raw ? localizeLab(raw, lang) : null;
+  }, [selectedLabId, lang]);
 
   useEffect(() => {
     if (selectedLab) {
@@ -144,7 +213,9 @@ export function LabsView({
     ).length;
 
     return (
-      <div className="space-y-5">
+      <>
+        <ConfettiBurst burst={confettiBurst} />
+        <div className="space-y-5">
         {/* Lab Header Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <button
@@ -159,7 +230,7 @@ export function LabsView({
           <div className="flex flex-wrap items-center gap-2.5">
             <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
               <strong className="text-cyan-600 dark:text-cyan-400">{selectedLab.code}</strong> ·{" "}
-              {selectedLab.duration} · {selectedLab.difficulty}
+              {selectedLab.duration} · {t.difficulties[selectedLab.difficulty]}
             </span>
             {selectedLab.tourId && (
               <button
@@ -173,7 +244,18 @@ export function LabsView({
             )}
             <button
               type="button"
-              onClick={() => toggleComplete(selectedLab.id)}
+              onClick={(e) => {
+                if (!isDone) {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setConfettiBurst({
+                    id: Date.now() + Math.random(),
+                    x: rect.left + rect.width / 2,
+                    y: rect.top + rect.height / 2,
+                  });
+                  appendLog(`Lab ${selectedLab.code} marked COMPLETED!`);
+                }
+                toggleComplete(selectedLab.id);
+              }}
               className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                 isDone
                   ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/40"
@@ -249,18 +331,37 @@ export function LabsView({
           {/* Right Column: Hardware Simulator, 4-Ch Logic Analyzer, Serial Monitor */}
           <div className="lg:col-span-8 space-y-5">
             <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                 <h3 className="text-sm font-semibold">{t.virtualSim}</h3>
-                <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
-                  ESP32-S3-WROOM-1 · N16R8
-                </span>
+                {(() => {
+                  const recBoard = selectedLab.boardId
+                    ? OFFICIAL_ESP_BOARDS.find((b) => b.id === selectedLab.boardId)
+                    : null;
+                  if (!recBoard) {
+                    return (
+                      <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
+                        ESP32-S3-WROOM-1 · N16R8
+                      </span>
+                    );
+                  }
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => onOpenBoard(recBoard.id)}
+                      className="text-xs font-mono text-cyan-600 dark:text-cyan-400 hover:underline cursor-pointer"
+                    >
+                      {recBoard.name} ({recBoard.lengthMm}×{recBoard.widthMm} mm) →
+                    </button>
+                  );
+                })()}
               </div>
-              {selectedLab.simType === "sound" && <SoundSimulator onLog={appendLog} />}
-              {selectedLab.simType === "display" && <DisplaySimulator onLog={appendLog} />}
-              {selectedLab.simType === "rfid" && <RfidSimulator onLog={appendLog} />}
-              {selectedLab.simType === "ble" && <BleSimulator onLog={appendLog} />}
+              {selectedLab.simType === "sound" && <SoundSimulator t={t} lang={lang} onLog={appendLog} />}
+              {selectedLab.simType === "display" && <DisplaySimulator t={t} lang={lang} onLog={appendLog} />}
+              {selectedLab.simType === "rfid" && <RfidSimulator t={t} lang={lang} onLog={appendLog} />}
+              {selectedLab.simType === "ble" && <BleSimulator t={t} lang={lang} onLog={appendLog} />}
+              {selectedLab.simType === "iot" && <IotSensorSimulator t={t} lang={lang} onLog={appendLog} />}
               {(selectedLab.simType === "wifi" || selectedLab.simType === "intro") && (
-                <WifiIntroSimulator simType={selectedLab.simType} onLog={appendLog} />
+                <WifiIntroSimulator t={t} lang={lang} simType={selectedLab.simType} onLog={appendLog} />
               )}
             </div>
 
@@ -292,7 +393,7 @@ export function LabsView({
                     className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-mono border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:border-cyan-500 cursor-pointer"
                   >
                     {analyzerRunning ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                    {analyzerRunning ? "Freeze" : "Run"}
+                    {analyzerRunning ? t.freeze : t.run}
                   </button>
                 </div>
               </div>
@@ -353,32 +454,35 @@ export function LabsView({
                   type="text"
                   value={serialInput}
                   onChange={(e) => setSerialInput(e.target.value)}
-                  placeholder="Type UART command (help, heap, info, pins, scan, reboot)..."
+                  placeholder={t.serialPlaceholder}
                   className="flex-1 bg-transparent px-3 py-2 text-xs font-mono text-slate-200 placeholder:text-slate-500 focus:outline-none"
                 />
                 <button
                   type="submit"
                   className="px-4 py-2 text-xs font-mono text-cyan-400 hover:bg-slate-900 cursor-pointer"
                 >
-                  Send
+                  {t.sendCmd}
                 </button>
               </form>
             </div>
           </div>
         </div>
-      </div>
+        </div>
+      </>
     );
   }
 
   // Course & Tracks Browser View
-  const filteredLabs = LABS.filter((lab) => {
+  const filteredLabs = LABS.map((raw) => localizeLab(raw, lang)).filter((lab) => {
     const matchesTrack = activeTrack === "all" || lab.track === activeTrack;
     const q = query.trim().toLowerCase();
+    const raw = LABS.find((l) => l.id === lab.id);
     const matchesQuery =
       !q ||
       lab.code.toLowerCase().includes(q) ||
       lab.title.toLowerCase().includes(q) ||
       lab.summary.toLowerCase().includes(q) ||
+      (raw && raw.title.toLowerCase().includes(q)) ||
       lab.wiring.some((w) => w.signal.toLowerCase().includes(q));
     return matchesTrack && matchesQuery;
   });
@@ -386,7 +490,9 @@ export function LabsView({
   const pct = Math.round((completedLabs.length / LABS.length) * 100);
 
   return (
-    <div className="space-y-6">
+    <>
+      <ConfettiBurst burst={confettiBurst} />
+      <div className="space-y-6">
       {/* Progress Overview */}
       <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
@@ -396,18 +502,45 @@ export function LabsView({
               {completedLabs.length} / {LABS.length} {t.completed} · {t.acrossTracks}
             </p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json,.json"
+              onChange={handleRestoreFileChange}
+              className="hidden"
+              aria-label={t.restoreProgress}
+            />
+            <button
+              type="button"
+              onClick={handleDownloadProgress}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-200 hover:border-cyan-500 hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <Download className="w-3.5 h-3.5 text-cyan-500" />
+              {t.downloadProgress}
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-200 hover:border-emerald-500 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <Upload className="w-3.5 h-3.5 text-emerald-500" />
+              {t.restoreProgress}
+            </button>
             {completedLabs.length > 0 && (
               <button
                 type="button"
-                onClick={resetProgress}
-                className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-rose-500 transition-colors cursor-pointer"
+                onClick={() => {
+                  resetProgress();
+                  setProgressNotice(null);
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-500 hover:text-rose-500 transition-colors cursor-pointer whitespace-nowrap"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 {t.resetProgress}
               </button>
             )}
-            <div className="font-mono text-2xl font-bold text-cyan-600 dark:text-cyan-400 tabular-nums">
+            <div className="font-mono text-2xl font-bold text-cyan-600 dark:text-cyan-400 tabular-nums pl-1">
               {pct}%
             </div>
           </div>
@@ -418,6 +551,26 @@ export function LabsView({
             style={{ width: `${pct}%` }}
           />
         </div>
+        {progressNotice && (
+          <div
+            role="status"
+            className={`mt-3 text-xs font-mono flex items-center justify-between gap-2 px-3 py-2 rounded-lg border ${
+              progressNotice.kind === "success"
+                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                : "bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-300"
+            }`}
+          >
+            <span>{progressNotice.text}</span>
+            <button
+              type="button"
+              onClick={() => setProgressNotice(null)}
+              className="opacity-70 hover:opacity-100 cursor-pointer"
+              aria-label="Dismiss status message"
+            >
+              ×
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Filter Bar + Search */}
@@ -434,7 +587,8 @@ export function LabsView({
           >
             {t.filterAll} ({LABS.length})
           </button>
-          {TRACKS.map((tr) => {
+          {TRACKS.map((rawTrack) => {
+            const tr = localizeTrack(rawTrack, lang);
             const Icon = tr.icon;
             const trackLabs = LABS.filter((l) => l.track === tr.id);
             const trackDone = trackLabs.filter((l) => completedLabs.includes(l.id)).length;
@@ -501,7 +655,7 @@ export function LabsView({
                       <span aria-hidden="true">·</span>
                       <span>{lab.duration}</span>
                       <span aria-hidden="true">·</span>
-                      <span>{lab.difficulty}</span>
+                      <span>{t.difficulties[lab.difficulty]}</span>
                     </div>
                     {done && (
                       <CheckCircle2
@@ -519,7 +673,7 @@ export function LabsView({
                 </div>
                 <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
                   <span className="font-mono text-slate-500 dark:text-slate-400">
-                    {lab.wiring.length} wires
+                    {lab.wiring.length} {t.wiresLabel}
                   </span>
                   <span className="font-semibold text-cyan-600 dark:text-cyan-400 flex items-center gap-1">
                     {t.openLab}
@@ -531,6 +685,7 @@ export function LabsView({
           })}
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }

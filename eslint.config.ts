@@ -1,14 +1,15 @@
 import js from "@eslint/js";
+import firebaseRulesPlugin from "@firebase/eslint-plugin-security-rules";
 import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
-export default tseslint.config(
+export default [
   {
     ignores: [
-      "dist",
-      "docs-llm",
-      "node_modules",
+      "dist/**/*",
+      "docs-llm/**/*",
+      "node_modules/**/*",
       "src/app/**",
       "src/config/**",
       "src/content/**",
@@ -19,7 +20,7 @@ export default tseslint.config(
       "src/lib/**",
     ],
   },
-  {
+  ...tseslint.config({
     files: ["src/main.tsx", "src/App.tsx", "src/studio/**/*.{ts,tsx}", "vite.config.ts"],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     plugins: {
@@ -37,5 +38,7 @@ export default tseslint.config(
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
     },
-  },
-);
+  }),
+  firebaseRulesPlugin.configs["flat/recommended"],
+];
+

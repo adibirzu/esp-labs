@@ -1,13 +1,41 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Cpu, Database, Layers, Package, Search, Sliders, X } from "lucide-react";
+import {
+  CircuitBoard,
+  Cpu,
+  Database,
+  Layers,
+  Lightbulb,
+  Package,
+  Radio,
+  Search,
+  Sliders,
+  X,
+} from "lucide-react";
+import { OFFICIAL_ESP_BOARDS } from "../data/boards";
 import { CHIP_BLOCKS, REGISTERS } from "../data/chip";
+import { FLIPPER_BOARDS, FLIPPER_GUIDES, pickText } from "../data/flipper";
+import { PROJECT_IDEAS } from "../data/ideas";
 import { KIT_PARTS } from "../data/kit";
 import { LABS } from "../data/labs";
 import { ALL_PINS } from "../data/pinout";
+import {
+  localizeBoard,
+  localizeChipBlock,
+  localizeIdea,
+  localizeKitPart,
+  localizeLab,
+  localizePin,
+  localizeRegister,
+} from "../data/ro-overrides";
 import type { Translations } from "../i18n";
+import type { Lang } from "../types";
 
 export type SearchResultAction =
+  | { kind: "board"; id: string }
+  | { kind: "flipper-board"; id: string }
+  | { kind: "flipper-guide"; id: string }
   | { kind: "lab"; id: string }
+  | { kind: "idea"; id: string }
   | { kind: "register"; id: string }
   | { kind: "kit"; id: string }
   | { kind: "block"; id: string }
@@ -19,23 +47,27 @@ interface SearchResultItem {
   code: string;
   title: string;
   subtitle: string;
-  group: "labs" | "registers" | "hardware" | "blocks" | "pins";
+  group: "boards" | "flipper" | "labs" | "ideas" | "registers" | "hardware" | "blocks" | "pins";
 }
 
 interface GlobalSearchProps {
   t: Translations;
+  lang: Lang;
   onSelect: (action: SearchResultAction) => void;
 }
 
 const GROUP_ICONS = {
+  boards: CircuitBoard,
+  flipper: Radio,
   labs: Cpu,
+  ideas: Lightbulb,
   registers: Database,
   hardware: Package,
   blocks: Layers,
   pins: Sliders,
 } as const;
 
-export function GlobalSearch({ t, onSelect }: GlobalSearchProps) {
+export function GlobalSearch({ t, lang, onSelect }: GlobalSearchProps) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -48,9 +80,56 @@ export function GlobalSearch({ t, onSelect }: GlobalSearchProps) {
 
     const matches: SearchResultItem[] = [];
 
-    // 1. Labs
-    for (const lab of LABS) {
-      const hay = `${lab.code} ${lab.title} ${lab.summary} ${lab.track} ${lab.wiring
+    // 1. Official ESP32 Boards
+    for (const rawBoard of OFFICIAL_ESP_BOARDS) {
+      const board = localizeBoard(rawBoard, lang);
+      const hay = `${rawBoard.name} ${rawBoard.soc} ${rawBoard.moduleName} ${rawBoard.arch} ${rawBoard.cpu} ${rawBoard.lengthMm}x${rawBoard.widthMm} ${rawBoard.wirelessLabels.join(" ")} ${rawBoard.tagline} ${board.tagline}`.toLowerCase();
+      if (hay.includes(q)) {
+        matches.push({
+          key: `board:${board.id}`,
+          action: { kind: "board", id: board.id },
+          code: `${board.lengthMm}×${board.widthMm}mm`,
+          title: board.name,
+          subtitle: `${board.arch} ${board.maxFreqMhz} MHz · ${board.wirelessLabels[0]}`,
+          group: "boards",
+        });
+      }
+    }
+
+    // 1b. Flipper Zero Boards & Guides
+    for (const fb of FLIPPER_BOARDS) {
+      const chipsText = fb.chips.join(" ");
+      const hay = `flipper zero ${fb.name} ${fb.maker} ${chipsText} ${fb.category} ${fb.summary.en} ${fb.summary.ro} ${fb.redditBuzz.en} ${fb.redditBuzz.ro}`.toLowerCase();
+      if (hay.includes(q)) {
+        matches.push({
+          key: `fboard:${fb.id}`,
+          action: { kind: "flipper-board", id: fb.id },
+          code: fb.priceBand,
+          title: fb.name,
+          subtitle: `${fb.maker} · ${fb.chips.slice(0, 2).join(" + ")}`,
+          group: "flipper",
+        });
+      }
+    }
+    for (const fg of FLIPPER_GUIDES) {
+      const stepsText = fg.steps.map((s) => `${s.title.en} ${s.title.ro}`).join(" ");
+      const hay = `flipper zero ${fg.title.en} ${fg.title.ro} ${fg.summary.en} ${fg.summary.ro} ${fg.requiredPartIds.join(" ")} ${stepsText}`.toLowerCase();
+      if (hay.includes(q)) {
+        matches.push({
+          key: `fguide:${fg.id}`,
+          action: { kind: "flipper-guide", id: fg.id },
+          code: t.difficulties[fg.difficulty],
+          title: pickText(fg.title, lang),
+          subtitle: `${fg.duration} · Flipper Zero`,
+          group: "flipper",
+        });
+      }
+    }
+
+    // 2. Labs
+    for (const rawLab of LABS) {
+      const lab = localizeLab(rawLab, lang);
+      const hay = `${rawLab.code} ${rawLab.title} ${rawLab.summary} ${lab.title} ${lab.summary} ${rawLab.track} ${rawLab.wiring
         .map((w) => `${w.from} ${w.to} ${w.signal}`)
         .join(" ")}`.toLowerCase();
       if (hay.includes(q)) {
@@ -65,10 +144,27 @@ export function GlobalSearch({ t, onSelect }: GlobalSearchProps) {
       }
     }
 
-    // 2. Registers & Addresses
-    for (const reg of REGISTERS) {
+    // 3. Project Ideas
+    for (const rawIdea of PROJECT_IDEAS) {
+      const idea = localizeIdea(rawIdea, lang);
+      const hay = `${rawIdea.title} ${idea.title} ${rawIdea.category} ${t.ideaCategories[rawIdea.category]} ${rawIdea.difficulty} ${rawIdea.summary} ${idea.summary} ${rawIdea.recommendedBoardId} ${rawIdea.buses.join(" ")} ${rawIdea.parts.join(" ")}`.toLowerCase();
+      if (hay.includes(q)) {
+        matches.push({
+          key: `idea:${idea.id}`,
+          action: { kind: "idea", id: idea.id },
+          code: t.difficulties[idea.difficulty],
+          title: idea.title,
+          subtitle: `${t.ideaCategories[idea.category]} · ${idea.buildTime}`,
+          group: "ideas",
+        });
+      }
+    }
+
+    // 4. Registers & Addresses
+    for (const rawReg of REGISTERS) {
+      const reg = localizeRegister(rawReg, lang);
       const fieldsHay = reg.fields.map((f) => `${f.name} ${f.group}`).join(" ");
-      const hay = `${reg.id} ${reg.address} ${reg.desc} ${fieldsHay}`.toLowerCase();
+      const hay = `${reg.id} ${reg.address} ${rawReg.desc} ${reg.desc} ${fieldsHay}`.toLowerCase();
       if (hay.includes(q)) {
         matches.push({
           key: `reg:${reg.id}`,
@@ -81,9 +177,10 @@ export function GlobalSearch({ t, onSelect }: GlobalSearchProps) {
       }
     }
 
-    // 3. Hardware Kit Components
-    for (const part of KIT_PARTS) {
-      const hay = `${part.name} ${part.category} ${part.iface} ${part.pins} ${part.voltage} ${part.specs.join(" ")}`.toLowerCase();
+    // 5. Hardware Kit Components
+    for (const rawPart of KIT_PARTS) {
+      const part = localizeKitPart(rawPart, lang);
+      const hay = `${rawPart.name} ${part.name} ${rawPart.category} ${part.category} ${part.iface} ${part.pins} ${part.voltage} ${rawPart.specs.join(" ")} ${part.specs.join(" ")}`.toLowerCase();
       if (hay.includes(q)) {
         matches.push({
           key: `kit:${part.id}`,
@@ -96,14 +193,15 @@ export function GlobalSearch({ t, onSelect }: GlobalSearchProps) {
       }
     }
 
-    // 4. Chip Peripheral Blocks
-    for (const block of CHIP_BLOCKS) {
-      const hay = `${block.name} ${block.category} ${block.freq} ${block.summary} ${block.specs.join(" ")}`.toLowerCase();
+    // 6. Chip Peripheral Blocks
+    for (const rawBlock of CHIP_BLOCKS) {
+      const block = localizeChipBlock(rawBlock, lang);
+      const hay = `${rawBlock.name} ${block.name} ${rawBlock.category} ${block.freq} ${rawBlock.summary} ${block.summary} ${rawBlock.specs.join(" ")}`.toLowerCase();
       if (hay.includes(q)) {
         matches.push({
           key: `block:${block.id}`,
           action: { kind: "block", id: block.id },
-          code: block.category,
+          code: t.chipCategories[block.category as keyof typeof t.chipCategories] ?? block.category,
           title: block.name,
           subtitle: `${block.freq} · ${block.summary}`,
           group: "blocks",
@@ -111,9 +209,10 @@ export function GlobalSearch({ t, onSelect }: GlobalSearchProps) {
       }
     }
 
-    // 5. Board Pins (by GPIO, ADC, Touch, Strapping, PSRAM)
-    for (const pin of ALL_PINS) {
-      const hay = `${pin.label} ${pin.types.join(" ")} ${pin.adc ?? ""} ${pin.touch ?? ""} ${pin.strapping ?? ""} ${pin.notes}`.toLowerCase();
+    // 7. Board Pins
+    for (const rawPin of ALL_PINS) {
+      const pin = localizePin(rawPin, lang);
+      const hay = `${pin.label} ${pin.types.join(" ")} ${pin.adc ?? ""} ${pin.touch ?? ""} ${rawPin.strapping ?? ""} ${pin.strapping ?? ""} ${rawPin.notes} ${pin.notes}`.toLowerCase();
       if (hay.includes(q)) {
         matches.push({
           key: `pin:${pin.id}`,
@@ -126,13 +225,11 @@ export function GlobalSearch({ t, onSelect }: GlobalSearchProps) {
       }
     }
 
-    return matches.slice(0, 14);
-  }, [query]);
+    return matches.slice(0, 16);
+  }, [query, lang, t]);
 
-  // Clamp activeIndex whenever results change
   const safeActiveIndex = results.length > 0 ? Math.min(activeIndex, results.length - 1) : 0;
 
-  // Global keyboard shortcut: Cmd/Ctrl+K or '/' focuses search
   useEffect(() => {
     const onGlobalKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -155,7 +252,6 @@ export function GlobalSearch({ t, onSelect }: GlobalSearchProps) {
     return () => window.removeEventListener("keydown", onGlobalKey);
   }, []);
 
-  // Click-outside close
   useEffect(() => {
     const onPointerDown = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -174,17 +270,22 @@ export function GlobalSearch({ t, onSelect }: GlobalSearchProps) {
   };
 
   const groupLabels: Record<SearchResultItem["group"], string> = {
+    boards: t.searchGroups.boards,
+    flipper: t.searchGroups.flipper,
     labs: t.searchGroups.labs,
+    ideas: t.searchGroups.ideas,
     registers: t.searchGroups.registers,
     hardware: t.searchGroups.hardware,
     blocks: t.searchGroups.blocks,
     pins: t.searchGroups.pins,
   };
 
-  // Group results preserving overall flat index for keyboard nav
   const grouped = useMemo(() => {
     const order: SearchResultItem["group"][] = [
+      "boards",
+      "flipper",
       "labs",
+      "ideas",
       "registers",
       "hardware",
       "blocks",
@@ -201,7 +302,7 @@ export function GlobalSearch({ t, onSelect }: GlobalSearchProps) {
   }, [results]);
 
   return (
-    <div ref={containerRef} className="relative w-44 sm:w-56 lg:w-64 shrink-0">
+    <div ref={containerRef} className="relative w-32 sm:w-36 xl:w-44 shrink-0">
       <div className="relative flex items-center">
         <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 pointer-events-none" />
         <input
@@ -231,7 +332,7 @@ export function GlobalSearch({ t, onSelect }: GlobalSearchProps) {
           }}
           placeholder={t.headerSearchPlaceholder}
           aria-label={t.headerSearchPlaceholder}
-          className="w-full pl-8 pr-11 py-1.5 rounded-lg text-xs bg-slate-100/80 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 focus:bg-white dark:focus:bg-slate-950 transition-colors"
+          className="w-full pl-8 pr-9 py-1.5 rounded-lg text-xs bg-slate-100/80 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 focus:bg-white dark:focus:bg-slate-950 transition-colors"
         />
         {query ? (
           <button
@@ -252,7 +353,6 @@ export function GlobalSearch({ t, onSelect }: GlobalSearchProps) {
         )}
       </div>
 
-      {/* Results Dropdown */}
       {open && query.trim().length > 0 && (
         <div
           role="listbox"

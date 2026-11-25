@@ -1,7 +1,18 @@
 export type Lang = "en" | "ro";
-export type ViewId = "labs" | "pinout" | "chip" | "code" | "kit";
-export type TrackId = "intro" | "display" | "wifi" | "ble" | "rfid" | "sound";
-export type SimType = "intro" | "display" | "wifi" | "ble" | "rfid" | "sound";
+export type ViewId =
+  | "home"
+  | "bench3d"
+  | "labs"
+  | "flipper"
+  | "boards"
+  | "ideas"
+  | "pinout"
+  | "chip"
+  | "code"
+  | "kit";
+export type AudienceMode = "kids" | "adults";
+export type TrackId = "intro" | "display" | "wifi" | "ble" | "rfid" | "sound" | "iot";
+export type SimType = "intro" | "display" | "wifi" | "ble" | "rfid" | "sound" | "iot";
 
 export interface WiringItem {
   from: string;
@@ -20,6 +31,7 @@ export interface LabItem {
   title: string;
   summary: string;
   tourId?: string;
+  boardId?: string;
   wiring: WiringItem[];
   defaultLogs: string[];
 }
@@ -124,4 +136,65 @@ export interface KitPart {
   specs: string[];
   labs: string[];
   accent: string;
+}
+
+export type CpuArch = "Xtensa" | "RISC-V";
+export type RadioCapability = "wifi4" | "wifi6" | "wifi5ghz" | "ble5" | "btClassic" | "ieee802154";
+export type DocKind = "user-guide" | "datasheet" | "trm" | "esp-idf" | "hardware";
+
+export interface OfficialDocLink {
+  kind: DocKind;
+  title: string;
+  url: string;
+  summary: string;
+}
+
+export interface EspBoardSpec {
+  id: string;
+  name: string;
+  soc: string;
+  moduleName: string;
+  formFactor: "devkit-breadboard" | "ev-board";
+  lengthMm: number;
+  widthMm: number;
+  moduleSizeMm: string;
+  pinCount: number;
+  pinPitchMm: number;
+  arch: CpuArch;
+  cpu: string;
+  cores: number;
+  maxFreqMhz: number;
+  sramKb: number;
+  psramSpec: string;
+  hasPsram: boolean;
+  flashSpec: string;
+  gpios: number;
+  usb: string;
+  hasUsbOtg: boolean;
+  wirelessLabels: string[];
+  radios: RadioCapability[];
+  deepSleepUa: number;
+  operatingTemp: string;
+  accent: string;
+  tagline: string;
+  bestFor: string[];
+  peripherals: string[];
+  gotcha: string;
+  docs: OfficialDocLink[];
+}
+
+export interface ProjectIdea {
+  id: string;
+  title: string;
+  category: "Smart Home" | "Audio & Synth" | "Security & RFID" | "Low Power & Solar" | "Wireless & Mesh" | "HMI & Vision";
+  difficulty: "Beginner" | "Intermediate" | "Advanced";
+  buildTime: string;
+  recommendedBoardId: string;
+  altBoardIds: string[];
+  summary: string;
+  buses: string[];
+  parts: string[];
+  steps: string[];
+  relatedLabCodes: string[];
+  tourId?: string;
 }
