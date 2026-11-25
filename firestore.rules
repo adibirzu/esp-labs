@@ -75,6 +75,7 @@ service cloud.firestore {
           'completedLabs',
           'savedIdeaIds',
           'benchLayout',
+          'earnedBadgeIds',
           'createdAt',
           'updatedAt'
         ])
@@ -88,6 +89,7 @@ service cloud.firestore {
         && isValidStringList(data.completedLabs, 60)
         && isValidStringList(data.savedIdeaIds, 40)
         && (!('benchLayout' in data) || (data.benchLayout is map && data.benchLayout.size() <= 12))
+        && (!('earnedBadgeIds' in data) || isValidStringList(data.earnedBadgeIds, 20))
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -185,8 +187,8 @@ service cloud.firestore {
         && (
           incoming().diff(existing()).affectedKeys().hasOnly(['ownedParts', 'customParts', 'updatedAt']) ||
           incoming().diff(existing()).affectedKeys().hasOnly(['benchLayout', 'updatedAt']) ||
-          incoming().diff(existing()).affectedKeys().hasOnly(['completedLabs', 'savedIdeaIds', 'updatedAt']) ||
-          incoming().diff(existing()).affectedKeys().hasOnly(['ownedParts', 'customParts', 'completedLabs', 'savedIdeaIds', 'benchLayout', 'updatedAt'])
+          incoming().diff(existing()).affectedKeys().hasOnly(['completedLabs', 'savedIdeaIds', 'earnedBadgeIds', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['ownedParts', 'customParts', 'completedLabs', 'savedIdeaIds', 'benchLayout', 'earnedBadgeIds', 'updatedAt'])
         );
 
       allow delete: if isOwner(userId);

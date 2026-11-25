@@ -6,6 +6,8 @@ export interface DynamicDisplayHandle {
   texture: THREE.CanvasTexture;
 }
 
+export type LogicGpioPin = 4 | 5 | 8 | 18 | 15 | 0;
+
 export interface Esp32RigHandles {
   group: THREE.Group;
   rgbMesh: THREE.Mesh;
@@ -13,6 +15,15 @@ export interface Esp32RigHandles {
   bootCap: THREE.Mesh;
   rstCap: THREE.Mesh;
   setRgbColor: (hex: string, on: boolean) => void;
+  setGpioProbeLevels: (levels: Record<LogicGpioPin, 0 | 1>) => void;
+}
+
+export interface BreadboardRigHandles {
+  group: THREE.Group;
+  setGpioStates: (
+    levels: Record<LogicGpioPin, 0 | 1>,
+    buttonPressed: Record<0 | 15, boolean>,
+  ) => void;
 }
 
 export interface FlipperRigHandles {
@@ -563,11 +574,43 @@ export function createEsp32S3Board(maxAnisotropy: number): Esp32RigHandles {
   tagInteractive(bootCap, "esp32-s3", "esp-boot");
   group.add(bootCap);
 
+  // Live GPIO Logic Probe Indicator Dots mounted directly beside ESP32-S3 header pins
+  const espProbeSpecs: { pin: LogicGpioPin; x: number; z: number; color: number; action: string }[] = [
+    { pin: 4, x: -0.94, z: -2.42 + 3 * 0.242, color: 0xef4444, action: "logic-led-4" },
+    { pin: 5, x: -0.94, z: -2.42 + 4 * 0.242, color: 0x10b981, action: "logic-led-5" },
+    { pin: 15, x: -0.94, z: -2.42 + 7 * 0.242, color: 0xa855f7, action: "logic-btn-15" },
+    { pin: 18, x: -0.94, z: -2.42 + 10 * 0.242, color: 0xf59e0b, action: "logic-led-18" },
+    { pin: 8, x: -0.94, z: -2.42 + 11 * 0.242, color: 0x06b6d4, action: "logic-led-8" },
+    { pin: 0, x: 0.94, z: -2.42 + 13 * 0.242, color: 0x38bdf8, action: "logic-btn-0" },
+  ];
+  const espProbeMats = {} as Record<LogicGpioPin, THREE.MeshStandardMaterial>;
+  const espProbeGeo = new THREE.SphereGeometry(0.08, 12, 10);
+  for (const spec of espProbeSpecs) {
+    const pMat = new THREE.MeshStandardMaterial({
+      color: spec.color,
+      emissive: spec.color,
+      emissiveIntensity: 0.08,
+      roughness: 0.25,
+    });
+    const dot = new THREE.Mesh(espProbeGeo, pMat);
+    dot.position.set(spec.x, 0.4, spec.z);
+    dot.userData.boardId = "esp32-s3";
+    dot.userData.action = spec.action;
+    group.add(dot);
+    espProbeMats[spec.pin] = pMat;
+  }
+
   tagInteractive(group, "esp32-s3");
   // Preserve sub-part action tags
   rgbMesh.userData.action = "esp-rgb";
   rstCap.userData.action = "esp-rst";
   bootCap.userData.action = "esp-boot";
+  for (const child of group.children) {
+    const match = espProbeSpecs.find(
+      (s) => Math.abs(child.position.x - s.x) < 0.02 && Math.abs(child.position.z - s.z) < 0.02,
+    );
+    if (match) child.userData.action = match.action;
+  }
 
   const setRgbColor = (hex: string, on: boolean) => {
     const col = new THREE.Color(hex);
@@ -578,7 +621,16 @@ export function createEsp32S3Board(maxAnisotropy: number): Esp32RigHandles {
     rgbLight.intensity = on ? 1.5 : 0;
   };
 
-  return { group, rgbMesh, rgbLight, bootCap, rstCap, setRgbColor };
+  const setGpioProbeLevels = (levels: Record<LogicGpioPin, 0 | 1>) => {
+    for (const spec of espProbeSpecs) {
+      const isHigh = levels[spec.pin] === 1;
+      const mat = espProbeMats[spec.pin];
+      mat.emissiveIntensity = isHigh ? 2.2 : 0.06;
+      mat.color.setHex(isHigh ? spec.color : 0x334155);
+    }
+  };
+
+  return { group, rgbMesh, rgbLight, bootCap, rstCap, setRgbColor, setGpioProbeLevels };
 }
 
 /**
@@ -1035,8 +1087,9 @@ export function createMax98357AudioModel(maxAnisotropy: number): AudioRigHandles
 
 /**
  * 6. Realistic 830-Point Solderless Breadboard (165 x 55 mm)
+ *    Populated with 4 interactive 5mm GPIO LEDs (G4, G5, G8, G18) + 2 tactile pushbuttons (G0, G15)
  */
-export function createBreadboard830Model(maxAnisotropy: number): THREE.Group {
+export function createBreadboard830Model(maxAnisotropy: number): BreadboardRigHandles {
   const group = new THREE.Group();
   group.name = "breadboard-830";
   group.add(createContactShadow(16.6, 5.6));
@@ -1078,6 +1131,22 @@ export function createBreadboard830Model(maxAnisotropy: number): THREE.Group {
         ctx.fillRect(x, 342, 7, 7);
       }
     }
+
+    // Crisp GPIO Legend markings along bottom edge of breadboard
+    ctx.font = "bold 18px monospace";
+    ctx.textAlign = "center";
+    const labels: { text: string; xPx: number; col: string }[] = [
+      { text: "LED1·G4", xPx: 196, col: "#dc2626" },
+      { text: "LED2·G5", xPx: 344, col: "#059669" },
+      { text: "LED3·G8", xPx: 493, col: "#0891b2" },
+      { text: "LED4·G18", xPx: 642, col: "#d97706" },
+      { text: "BTN1·G0", xPx: 790, col: "#0284c7" },
+      { text: "BTN2·G15", xPx: 910, col: "#7c3aed" },
+    ];
+    for (const item of labels) {
+      ctx.fillStyle = item.col;
+      ctx.fillText(item.text, item.xPx, 305);
+    }
   }
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -1094,8 +1163,140 @@ export function createBreadboard830Model(maxAnisotropy: number): THREE.Group {
   body.receiveShadow = true;
   group.add(body);
 
+  // Mount 4 Interactive 5mm Dome LEDs + 220-ohm Series Resistors on the Breadboard
+  const leadMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.92, roughness: 0.2 });
+  const collarMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.65 });
+  const resistorBodyMat = new THREE.MeshStandardMaterial({ color: 0xd6b588, roughness: 0.55 });
+  const resistorBandMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.5 });
+
+  const ledSpecs: { pin: 4 | 5 | 8 | 18; x: number; colorHex: number }[] = [
+    { pin: 4, x: -5.1, colorHex: 0xef4444 },
+    { pin: 5, x: -2.7, colorHex: 0x10b981 },
+    { pin: 8, x: -0.3, colorHex: 0x06b6d4 },
+    { pin: 18, x: 2.1, colorHex: 0xf59e0b },
+  ];
+
+  const ledMats = {} as Record<4 | 5 | 8 | 18, THREE.MeshStandardMaterial>;
+  const ledInteractiveMeshes: { mesh: THREE.Object3D; action: string }[] = [];
+
+  for (const led of ledSpecs) {
+    const ledGroup = new THREE.Group();
+    ledGroup.position.set(led.x, 0.74, -0.55);
+
+    // Anode & cathode metallic legs plugged into breadboard
+    for (const lx of [-0.14, 0.14]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.42, 8), leadMat);
+      leg.position.set(lx, 0.21, 0);
+      ledGroup.add(leg);
+    }
+
+    // LED base flange collar
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.38, 0.12, 20), collarMat);
+    collar.position.y = 0.44;
+    ledGroup.add(collar);
+
+    // 5mm LED cylindrical body + hemispherical dome
+    const bulbMat = new THREE.MeshStandardMaterial({
+      color: led.colorHex,
+      emissive: led.colorHex,
+      emissiveIntensity: 0.1,
+      roughness: 0.18,
+      metalness: 0.05,
+    });
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.31, 0.46, 20), bulbMat);
+    barrel.position.y = 0.72;
+    barrel.castShadow = true;
+    ledGroup.add(barrel);
+
+    const dome = new THREE.Mesh(
+      new THREE.SphereGeometry(0.3, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2),
+      bulbMat,
+    );
+    dome.position.y = 0.95;
+    ledGroup.add(dome);
+
+    // 220-ohm axial current-limiting resistor in front of LED
+    const resBody = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.56, 12), resistorBodyMat);
+    resBody.rotation.z = Math.PI / 2;
+    resBody.position.set(0, 0.16, 0.95);
+    ledGroup.add(resBody);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.116, 0.116, 0.1, 12), resistorBandMat);
+    band.rotation.z = Math.PI / 2;
+    band.position.set(-0.1, 0.16, 0.95);
+    ledGroup.add(band);
+
+    group.add(ledGroup);
+    ledMats[led.pin] = bulbMat;
+    ledInteractiveMeshes.push({ mesh: ledGroup, action: `logic-led-${led.pin}` });
+  }
+
+  // Mount 2 Interactive Tactile Pushbuttons (BTN1 = GPIO0 Active-LOW, BTN2 = GPIO15 Active-HIGH)
+  const btnHousingMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 });
+  const btnPlateMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.85, roughness: 0.25 });
+  const btnSpecs: { pin: 0 | 15; x: number; capColor: number }[] = [
+    { pin: 0, x: 4.5, capColor: 0x0284c7 },
+    { pin: 15, x: 6.45, capColor: 0x7c3aed },
+  ];
+  const btnCaps = {} as Record<0 | 15, THREE.Mesh>;
+  const btnCapMats = {} as Record<0 | 15, THREE.MeshStandardMaterial>;
+  const btnInteractiveMeshes: { mesh: THREE.Object3D; action: string }[] = [];
+
+  for (const btn of btnSpecs) {
+    const btnGroup = new THREE.Group();
+    btnGroup.position.set(btn.x, 0.74, -0.25);
+
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.34, 0.95), btnHousingMat);
+    base.position.y = 0.17;
+    base.castShadow = true;
+    btnGroup.add(base);
+
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.08, 0.98), btnPlateMat);
+    plate.position.y = 0.36;
+    btnGroup.add(plate);
+
+    const capMat = new THREE.MeshStandardMaterial({
+      color: btn.capColor,
+      emissive: btn.capColor,
+      emissiveIntensity: 0.12,
+      roughness: 0.35,
+    });
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.32, 0.32, 20), capMat);
+    cap.position.y = 0.54;
+    cap.castShadow = true;
+    btnGroup.add(cap);
+
+    group.add(btnGroup);
+    btnCaps[btn.pin] = cap;
+    btnCapMats[btn.pin] = capMat;
+    btnInteractiveMeshes.push({ mesh: btnGroup, action: `logic-btn-${btn.pin}` });
+  }
+
   tagInteractive(group, "breadboard-830");
-  return group;
+  for (const item of [...ledInteractiveMeshes, ...btnInteractiveMeshes]) {
+    item.mesh.traverse((child) => {
+      child.userData.boardId = "breadboard-830";
+      child.userData.action = item.action;
+    });
+  }
+
+  const setGpioStates = (
+    levels: Record<LogicGpioPin, 0 | 1>,
+    buttonPressed: Record<0 | 15, boolean>,
+  ) => {
+    for (const led of ledSpecs) {
+      const isHigh = levels[led.pin] === 1;
+      const mat = ledMats[led.pin];
+      mat.emissiveIntensity = isHigh ? 2.4 : 0.06;
+      mat.color.setHex(isHigh ? led.colorHex : 0x334155);
+    }
+    for (const btn of btnSpecs) {
+      const pressed = buttonPressed[btn.pin];
+      btnCaps[btn.pin].position.y = pressed ? 0.43 : 0.54;
+      btnCapMats[btn.pin].emissiveIntensity = pressed ? 1.4 : 0.12;
+    }
+  };
+
+  return { group, setGpioStates };
 }
 
 /**

@@ -8,7 +8,13 @@ export type BenchBoardId =
   | "max98357a-audio"
   | "breadboard-830";
 
-export type WiringPresetId = "none" | "oled-i2c" | "rfid-spi" | "flipper-uart" | "audio-i2s";
+export type WiringPresetId =
+  | "none"
+  | "oled-i2c"
+  | "rfid-spi"
+  | "flipper-uart"
+  | "audio-i2s"
+  | "logic-gpio";
 
 export interface BenchBoardMeta {
   id: BenchBoardId;
@@ -253,6 +259,58 @@ export const BENCH_WIRE_CONNECTIONS: WireConnectionSpec[] = [
     toOffset: [0.3, 0.35, -1.2],
     color: "#f59e0b",
     label: "GPIO6 -> DIN",
+  },
+
+  // Logic State Analyzer GPIO Wires (ESP32-S3 -> Breadboard Virtual LEDs & Buttons)
+  {
+    id: "logic-g4",
+    preset: "logic-gpio",
+    fromBoard: "esp32-s3",
+    fromOffset: [-1.14, 0.45, -1.69],
+    toBoard: "breadboard-830",
+    toOffset: [-5.1, 0.78, -0.5],
+    color: "#ef4444",
+    label: "GPIO4 -> LED1 (Red)",
+  },
+  {
+    id: "logic-g5",
+    preset: "logic-gpio",
+    fromBoard: "esp32-s3",
+    fromOffset: [-1.14, 0.45, -1.45],
+    toBoard: "breadboard-830",
+    toOffset: [-2.7, 0.78, -0.5],
+    color: "#10b981",
+    label: "GPIO5 -> LED2 (Green)",
+  },
+  {
+    id: "logic-g8",
+    preset: "logic-gpio",
+    fromBoard: "esp32-s3",
+    fromOffset: [-1.14, 0.45, 0.24],
+    toBoard: "breadboard-830",
+    toOffset: [-0.3, 0.78, -0.5],
+    color: "#06b6d4",
+    label: "GPIO8 -> LED3 (Cyan)",
+  },
+  {
+    id: "logic-g18",
+    preset: "logic-gpio",
+    fromBoard: "esp32-s3",
+    fromOffset: [-1.14, 0.45, 0.0],
+    toBoard: "breadboard-830",
+    toOffset: [2.1, 0.78, -0.5],
+    color: "#f59e0b",
+    label: "GPIO18 -> LED4 (Amber)",
+  },
+  {
+    id: "logic-g15",
+    preset: "logic-gpio",
+    fromBoard: "esp32-s3",
+    fromOffset: [-1.14, 0.45, -0.72],
+    toBoard: "breadboard-830",
+    toOffset: [6.4, 0.78, -0.3],
+    color: "#a855f7",
+    label: "GPIO15 -> BTN2 (Input)",
   },
 ];
 

@@ -4,6 +4,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import {
+  Activity,
   Cable,
   Camera,
   ChevronDown,
@@ -43,6 +44,18 @@ import {
   type ArSessionStatus,
 } from "../logic/ar-alignment";
 import {
+  clearLogicHistory,
+  createInitialLogicState,
+  setButtonState,
+  setLogicPreset,
+  stepLogicAnalyzer,
+  toggleGpioOutput,
+  type GpioPinId,
+  type LogicAnalyzerState,
+  type LogicLevel,
+  type SignalGeneratorPreset,
+} from "../logic/logic-analyzer";
+import {
   createArDeskCalibrationGrid,
   createBreadboard830Model,
   createEsdWorkbenchMat,
@@ -53,12 +66,14 @@ import {
   createMfrc522Model,
   createOledSsd1306Model,
   type AudioRigHandles,
+  type BreadboardRigHandles,
   type Esp32RigHandles,
   type FlipperRigHandles,
   type OledRigHandles,
   type RfidRigHandles,
 } from "../three/board-models";
 import { ArAlignControls } from "../components/ArAlignControls";
+import { LogicAnalyzerPanel } from "../components/LogicAnalyzerPanel";
 import { RealHardwareDrawer } from "../components/RealHardwareDrawer";
 import type { BenchLayoutMap } from "../firebase/payload-validators";
 import type { ParsedSerialTelemetry } from "../logic/hardware-bridge";
@@ -72,8 +87,8 @@ interface Workbench3DViewProps {
 }
 
 type GizmoMode = "orbit" | "translate" | "rotate";
-type DockTab = "move" | "interact" | "camera" | "wiring" | "ar";
-type CameraPreset = "overview" | "esp32" | "flipper" | "top";
+type DockTab = "move" | "interact" | "logic" | "camera" | "wiring" | "ar";
+type CameraPreset = "overview" | "esp32" | "flipper" | "top" | "logic";
 
 const RGB_CYCLE = [
   { hex: "#06b6d4", name: "Cyan" },
@@ -95,6 +110,7 @@ const CAMERA_PRESETS: Record<CameraPreset, { pos: [number, number, number]; targ
   esp32: { pos: [-3.2, 6.2, 6.4], target: [-3.2, 0.4, 0.4] },
   flipper: { pos: [5.4, 7.6, 8.2], target: [4.4, 0.9, 0.3] },
   top: { pos: [-0.6, 20.5, 0.2], target: [-0.6, 0, 0.6] },
+  logic: { pos: [-5.6, 9.6, 11.8], target: [-4.6, 0.2, 3.0] },
 };
 
 function playQuickChirp(freqHz: number, durationSec = 0.14) {
@@ -150,6 +166,7 @@ export function Workbench3DView({
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [rgbIndex, setRgbIndex] = useState(0);
   const [flipperModeIdx, setFlipperModeIdx] = useState(0);
+  const [logicState, setLogicState] = useState<LogicAnalyzerState>(() => createInitialLogicState());
 
   // Refs bridging React UI -> stable Three.js scene without re-mounting WebGL
   const selectedBoardRef = useRef<BenchBoardId>(selectedBoard);
@@ -160,6 +177,7 @@ export function Workbench3DView({
   const flipperModeRef = useRef(flipperModeIdx);
   const arAlignmentRef = useRef<ArAlignmentState>(arAlignment);
   const arActiveRef = useRef(false);
+  const logicActionHandlerRef = useRef<(action: string) => void>(() => {});
 
   const sceneApiRef = useRef<{
     selectBoard: (id: BenchBoardId) => void;
@@ -174,6 +192,10 @@ export function Workbench3DView({
     setArMode: (enabled: boolean, alignment: ArAlignmentState) => void;
     updateArAlignment: (alignment: ArAlignmentState) => void;
     renderNowForSnapshot: () => HTMLCanvasElement | null;
+    syncLogicHardware: (
+      levels: Record<GpioPinId, LogicLevel>,
+      buttonPressed: Record<0 | 15, boolean>,
+    ) => void;
   } | null>(null);
 
   useEffect(() => {
@@ -294,7 +316,7 @@ export function Workbench3DView({
     const oledRig: OledRigHandles = createOledSsd1306Model(maxAniso);
     const rfidRig: RfidRigHandles = createMfrc522Model(maxAniso);
     const audioRig: AudioRigHandles = createMax98357AudioModel(maxAniso);
-    const breadboardGroup = createBreadboard830Model(maxAniso);
+    const breadboardRig: BreadboardRigHandles = createBreadboard830Model(maxAniso);
 
     const boardGroups: Record<BenchBoardId, THREE.Group> = {
       "esp32-s3": espRig.group,
@@ -302,8 +324,12 @@ export function Workbench3DView({
       "ssd1306-oled": oledRig.group,
       "mfrc522-rfid": rfidRig.group,
       "max98357a-audio": audioRig.group,
-      "breadboard-830": breadboardGroup,
+      "breadboard-830": breadboardRig.group,
     };
+
+    const initLogic = createInitialLogicState();
+    breadboardRig.setGpioStates(initLogic.levels, initLogic.buttonPressed);
+    espRig.setGpioProbeLevels(initLogic.levels);
 
     const initialLayout = mergeSavedBenchLayout(savedLayout);
     for (const meta of BENCH_BOARDS) {
@@ -579,6 +605,9 @@ export function Workbench3DView({
             : "MAX98357A I2S Amp -> Chiptune chord (C5-E5-G5) played on 3W speaker.",
         );
         requestRender();
+      } else if (action.startsWith("logic-led-") || action.startsWith("logic-btn-")) {
+        playQuickChirp(action.startsWith("logic-btn-") ? 920 : 740, 0.06);
+        logicActionHandlerRef.current(action);
       }
     };
 
@@ -791,6 +820,11 @@ export function Workbench3DView({
         if (disposed) return null;
         renderer.render(scene, camera);
         return renderer.domElement;
+      },
+      syncLogicHardware: (levels, buttonPressed) => {
+        breadboardRig.setGpioStates(levels, buttonPressed);
+        espRig.setGpioProbeLevels(levels);
+        requestRender();
       },
     };
 
@@ -1035,6 +1069,74 @@ export function Workbench3DView({
       stopCameraTracks();
     };
   }, [stopCameraTracks]);
+
+  // Sync 3D breadboard LEDs, buttons & ESP32 header probes whenever logicState changes
+  useEffect(() => {
+    sceneApiRef.current?.syncLogicHardware(logicState.levels, logicState.buttonPressed);
+  }, [logicState.levels, logicState.buttonPressed]);
+
+  // Auto-wire GPIO jumpers and frame ESP32 + Breadboard LEDs/buttons when entering Logic State Analyzer tab
+  useEffect(() => {
+    if (dockTab !== "logic") return;
+    setWiringPreset("logic-gpio");
+    sceneApiRef.current?.rebuildWires("logic-gpio");
+    if (!arActiveRef.current) {
+      sceneApiRef.current?.setCameraPreset("logic");
+    }
+  }, [dockTab]);
+
+  // Run lightweight 4.5 Hz sample clock only while Logic State Analyzer tab is open & running
+  useEffect(() => {
+    if (dockTab !== "logic" || !logicState.running) return;
+    const id = window.setInterval(() => {
+      setLogicState((prev) => stepLogicAnalyzer(prev));
+    }, 220);
+    return () => window.clearInterval(id);
+  }, [dockTab, logicState.running]);
+
+  const handleLogicToggleOutput = useCallback(
+    (pin: 4 | 5 | 8 | 18) => {
+      setLogicState((prev) => {
+        const next = toggleGpioOutput(prev, pin);
+        setStatusFeed(
+          lang === "ro"
+            ? `Analizor Logic -> GPIO${pin} comutat la ${next.levels[pin] === 1 ? "HIGH (3.3V)" : "LOW (0.0V)"}.`
+            : `Logic Analyzer -> GPIO${pin} toggled ${next.levels[pin] === 1 ? "HIGH (3.3V)" : "LOW (0.0V)"}.`,
+        );
+        return next;
+      });
+    },
+    [lang],
+  );
+
+  const handleLogicButtonChange = useCallback(
+    (pin: 0 | 15, pressed: boolean) => {
+      setLogicState((prev) => {
+        const next = setButtonState(prev, pin, pressed);
+        setStatusFeed(
+          lang === "ro"
+            ? `Buton GPIO${pin} ${pressed ? "APĂSAT" : "ELIBERAT"} -> Nivel logic ${next.levels[pin] === 1 ? "3.3V HIGH" : "0.0V LOW"}.`
+            : `Button GPIO${pin} ${pressed ? "PRESSED" : "RELEASED"} -> Logic ${next.levels[pin] === 1 ? "3.3V HIGH" : "0.0V LOW"}.`,
+        );
+        return next;
+      });
+    },
+    [lang],
+  );
+
+  // Wire direct 3D board clicks on breadboard LEDs & buttons back into React Logic Analyzer state
+  useEffect(() => {
+    logicActionHandlerRef.current = (action: string) => {
+      if (action.startsWith("logic-led-")) {
+        const pin = Number(action.replace("logic-led-", "")) as 4 | 5 | 8 | 18;
+        handleLogicToggleOutput(pin);
+      } else if (action.startsWith("logic-btn-")) {
+        const pin = Number(action.replace("logic-btn-", "")) as 0 | 15;
+        handleLogicButtonChange(pin, true);
+        window.setTimeout(() => handleLogicButtonChange(pin, false), 380);
+      }
+    };
+  }, [handleLogicButtonChange, handleLogicToggleOutput]);
 
   const handleSaveCloudLayout = useCallback(async () => {
     if (!sceneApiRef.current || !onSaveLayout) return;
@@ -1306,6 +1408,7 @@ export function Workbench3DView({
                       ? [{ id: "ar" as const, icon: ScanEye, label: lang === "ro" ? "Aliniere AR" : "AR Align" }]
                       : []),
                     { id: "move" as const, icon: Move, label: lang === "ro" ? "Plăci & Mutare 3D" : "Boards & 3D Move" },
+                    { id: "logic" as const, icon: Activity, label: lang === "ro" ? "Analizor Logic" : "Logic Analyzer" },
                     { id: "interact" as const, icon: Zap, label: lang === "ro" ? "Interacțiune Live" : "Live Interact" },
                     { id: "wiring" as const, icon: Cable, label: lang === "ro" ? "Cablare 3D" : "3D Wiring" },
                     { id: "camera" as const, icon: Camera, label: lang === "ro" ? "Cameră" : "Camera" },
@@ -1319,7 +1422,7 @@ export function Workbench3DView({
                         onClick={() => setDockTab(tabItem.id)}
                         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
                           active
-                            ? tabItem.id === "ar"
+                            ? tabItem.id === "ar" || tabItem.id === "logic"
                               ? "bg-emerald-600 text-white"
                               : "bg-cyan-600 text-white"
                             : "text-slate-300 hover:bg-slate-800"
@@ -1421,6 +1524,32 @@ export function Workbench3DView({
                 </div>
               )}
 
+              {/* Tab: Real-Time GPIO Logic State Analyzer */}
+              {dockTab === "logic" && (
+                <LogicAnalyzerPanel
+                  lang={lang}
+                  state={logicState}
+                  isLogicWiresActive={wiringPreset === "logic-gpio"}
+                  onToggleOutput={handleLogicToggleOutput}
+                  onButtonChange={handleLogicButtonChange}
+                  onPresetChange={(preset: SignalGeneratorPreset) =>
+                    setLogicState((prev) => setLogicPreset(prev, preset))
+                  }
+                  onToggleRun={() =>
+                    setLogicState((prev) => ({ ...prev, running: !prev.running }))
+                  }
+                  onStepOnce={() =>
+                    setLogicState((prev) => stepLogicAnalyzer({ ...prev, running: false }))
+                  }
+                  onClearHistory={() => setLogicState((prev) => clearLogicHistory(prev))}
+                  onToggleLogicWires={() =>
+                    sceneApiRef.current?.rebuildWires(
+                      wiringPreset === "logic-gpio" ? "flipper-uart" : "logic-gpio",
+                    )
+                  }
+                />
+              )}
+
               {/* Tab 2: Direct Component Interactions */}
               {dockTab === "interact" && (
                 <div className="flex flex-wrap items-center gap-2">
@@ -1476,6 +1605,7 @@ export function Workbench3DView({
                 <div className="flex flex-wrap items-center gap-2">
                   {(
                     [
+                      { id: "logic-gpio" as const, label: "ESP32 <-> LED-uri & Butoane GPIO (5 fire)" },
                       { id: "flipper-uart" as const, label: "Flipper Zero <-> ESP32 UART (4 fire)" },
                       { id: "oled-i2c" as const, label: "ESP32 <-> OLED SSD1306 I2C (4 fire)" },
                       { id: "rfid-spi" as const, label: "ESP32 <-> MFRC522 SPI2 (4 fire)" },

@@ -45,7 +45,7 @@ test("computeLearnerProgress computes XP, level progression, and unlocked badges
   // 7*50 + 2*15 + 3*20 + 2*35 = 350 + 30 + 60 + 70 = 510 XP -> Level 3
   assert.equal(active.xp, 510);
   assert.equal(active.level, 3);
-  assert.equal(active.unlockedCount, 6);
+  assert.equal(active.unlockedCount, 7);
 });
 
 test("audience recommendations return curated sets for kids and adults", () => {

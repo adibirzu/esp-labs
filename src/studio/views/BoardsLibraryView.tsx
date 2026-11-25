@@ -7,7 +7,6 @@ import {
   CheckSquare,
   Cpu,
   ExternalLink,
-  GitCompareArrows,
   LayoutGrid,
   Lightbulb,
   Maximize2,
@@ -17,6 +16,8 @@ import {
   ShieldCheck,
   Sliders,
 } from "lucide-react";
+import { AdultEngineeringTable } from "../components/AdultEngineeringTable";
+import { BoardTeardownDrilldown } from "../components/BoardTeardownDrilldown";
 import { RealBoardsSideBySide } from "../components/RealBoardsSideBySide";
 import {
   OFFICIAL_DOC_PORTALS,
@@ -751,162 +752,29 @@ export function BoardsLibraryView({
         </div>
       </div>
 
-      {/* Side-by-Side Board Comparator */}
-      <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-bold flex items-center gap-2">
-              <GitCompareArrows className="w-4 h-4 text-violet-500" />
-              {t.boardComparatorTitle}
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              {t.boardComparatorHint}
-            </p>
-          </div>
-          <div className="text-xs font-mono text-slate-500 dark:text-slate-400 tabular-nums">
-            {comparison.boards.length} / 4 {t.selectedOfThree}
-          </div>
-        </div>
+      {/* Deep Engineering Screw-Level Hardware Teardown & Exploded Stackup for Selected Board */}
+      <BoardTeardownDrilldown board={activeBoard} lang={lang} />
 
-        {comparison.boards.length === 0 ? (
-          <div className="p-6 text-center text-xs text-slate-500 dark:text-slate-400 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg">
-            {t.compareEmptyPrompt}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800">
-                  <th className="py-2.5 pr-4 font-mono text-slate-500 dark:text-slate-400 w-36">
-                    {t.metricLabel}
-                  </th>
-                  {comparison.boards.map((b) => (
-                    <th key={b.id} className="py-2.5 px-3 font-bold text-sm min-w-[190px]">
-                      <div className="flex items-center justify-between gap-2">
-                        <button
-                          type="button"
-                          onClick={() => onSelectBoard(b.id)}
-                          className="hover:text-cyan-600 dark:hover:text-cyan-400 cursor-pointer text-left"
-                        >
-                          {b.name}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => toggleCompare(b.id)}
-                          className="text-[10px] font-mono text-slate-400 hover:text-rose-500 cursor-pointer"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200/70 dark:divide-slate-800/80 font-mono tabular-nums">
-                <tr>
-                  <td className="py-2.5 pr-4 text-slate-500 font-sans font-medium">{t.dimensionsLabel}</td>
-                  {comparison.boards.map((b) => (
-                    <td
-                      key={b.id}
-                      className={`py-2.5 px-3 ${
-                        b.id === comparison.smallestFootprintId
-                          ? "text-emerald-600 dark:text-emerald-400 font-semibold"
-                          : "text-slate-800 dark:text-slate-200"
-                      }`}
-                    >
-                      {b.lengthMm.toFixed(2)} × {b.widthMm.toFixed(2)} mm
-                      {b.id === comparison.smallestFootprintId && ` (${t.smallestLabel})`}
-                    </td>
-                  ))}
-                </tr>
-                <tr>
-                  <td className="py-2.5 pr-4 text-slate-500 font-sans font-medium">{t.architectureLabel}</td>
-                  {comparison.boards.map((b) => (
-                    <td key={b.id} className="py-2.5 px-3 text-slate-800 dark:text-slate-200">
-                      {b.arch} · {b.cores} {b.cores > 1 ? t.coresLabel : t.coreLabel}
-                    </td>
-                  ))}
-                </tr>
-                <tr>
-                  <td className="py-2.5 pr-4 text-slate-500 font-sans font-medium">{t.maxClockLabel}</td>
-                  {comparison.boards.map((b) => (
-                    <td
-                      key={b.id}
-                      className={`py-2.5 px-3 ${
-                        b.id === comparison.fastestClockId
-                          ? "text-cyan-600 dark:text-cyan-400 font-semibold"
-                          : "text-slate-800 dark:text-slate-200"
-                      }`}
-                    >
-                      {b.maxFreqMhz} MHz
-                    </td>
-                  ))}
-                </tr>
-                <tr>
-                  <td className="py-2.5 pr-4 text-slate-500 font-sans font-medium">SRAM / PSRAM</td>
-                  {comparison.boards.map((b) => (
-                    <td key={b.id} className="py-2.5 px-3 text-slate-800 dark:text-slate-200">
-                      {b.sramKb} KB / {b.hasPsram ? t.psramReady : t.noPsram}
-                    </td>
-                  ))}
-                </tr>
-                <tr>
-                  <td className="py-2.5 pr-4 text-slate-500 font-sans font-medium">GPIO</td>
-                  {comparison.boards.map((b) => (
-                    <td
-                      key={b.id}
-                      className={`py-2.5 px-3 ${
-                        b.id === comparison.mostGpiosId
-                          ? "text-cyan-600 dark:text-cyan-400 font-semibold"
-                          : "text-slate-800 dark:text-slate-200"
-                      }`}
-                    >
-                      {b.gpios} GPIO ({b.pinCount} {t.pinsLabel.toLowerCase()})
-                    </td>
-                  ))}
-                </tr>
-                <tr>
-                  <td className="py-2.5 pr-4 text-slate-500 font-sans font-medium">Deep-Sleep</td>
-                  {comparison.boards.map((b) => (
-                    <td
-                      key={b.id}
-                      className={`py-2.5 px-3 ${
-                        b.id === comparison.lowestSleepId
-                          ? "text-emerald-600 dark:text-emerald-400 font-semibold"
-                          : "text-slate-800 dark:text-slate-200"
-                      }`}
-                    >
-                      ~{b.deepSleepUa} µA
-                    </td>
-                  ))}
-                </tr>
-                <tr>
-                  <td className="py-2.5 pr-4 text-slate-500 font-sans font-medium">{t.wirelessLabel}</td>
-                  {comparison.boards.map((b) => (
-                    <td
-                      key={b.id}
-                      className="py-2.5 px-3 font-sans text-slate-700 dark:text-slate-300"
-                    >
-                      {b.wirelessLabels.join(", ")}
-                    </td>
-                  ))}
-                </tr>
-                <tr>
-                  <td className="py-2.5 pr-4 text-slate-500 font-sans font-medium">USB</td>
-                  {comparison.boards.map((b) => (
-                    <td
-                      key={b.id}
-                      className="py-2.5 px-3 font-sans text-slate-700 dark:text-slate-300"
-                    >
-                      {b.usb}
-                    </td>
-                  ))}
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {/* Multi-Domain Adult Engineering Side-by-Side Board Comparator (Drill-Down to Screw Level) */}
+      <AdultEngineeringTable
+        lang={lang}
+        comparison={comparison}
+        onSelectBoard={onSelectBoard}
+        onToggleCompare={toggleCompare}
+        onInspectTeardown={() => {
+          document
+            .getElementById("screw-teardown-panel")
+            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }}
+        title={t.boardComparatorTitle}
+        hint={
+          lang === "ro"
+            ? "Compară până la 4 plăci pe 5 domenii inginerești — apasă pe orice rând pentru a deschide detaliile până la nivel de șurub, filet, gaură PCB, cuplu și BOM."
+            : "Compare up to 4 boards across 5 engineering domains — click any row to drill down to screw ISO standards, thread pitch, PCB drill holes, torque, and BOM cost."
+        }
+        emptyPrompt={t.compareEmptyPrompt}
+        selectedLabel={t.selectedOfThree}
+      />
 
       {/* Official Espressif Documentation Library */}
       <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70 space-y-4">

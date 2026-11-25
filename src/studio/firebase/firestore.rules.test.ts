@@ -43,7 +43,7 @@ function evaluateInventoryRule(params: {
     "createdAt",
     "updatedAt",
   ];
-  const allowed = new Set([...required, "benchLayout"]);
+  const allowed = new Set([...required, "benchLayout", "earnedBadgeIds"]);
   const keys = Object.keys(data);
   if (!required.every((k) => k in data)) return "PERMISSION_DENIED";
   if (!keys.every((k) => allowed.has(k))) return "PERMISSION_DENIED";
@@ -75,6 +75,9 @@ function evaluateInventoryRule(params: {
     ) {
       return "PERMISSION_DENIED";
     }
+  }
+  if ("earnedBadgeIds" in data && !checkList(data.earnedBadgeIds, BLUEPRINT_LIMITS.EARNED_BADGES_MAX_ITEMS)) {
+    return "PERMISSION_DENIED";
   }
 
   if (op === "create") {
@@ -223,10 +226,12 @@ test("sanitizeInventoryVault enforces volumetric bounds and drops invalid keys",
     completedLabs: ["intro-1", "intro-1"],
     savedIdeaIds: ["idea-1"],
     benchLayout: { "esp32-s3": { x: 999, y: -5, z: 2.12345, rotY: 1 } },
+    earnedBadgeIds: ["esp-rookie", "esp-rookie", "code-whisperer"],
   });
   assert.deepEqual(sanitized.ownedParts, { "esp32-s3-devkit": 2 });
   assert.deepEqual(sanitized.customParts, ["LoRa SX1262"]);
   assert.deepEqual(sanitized.completedLabs, ["intro-1"]);
+  assert.deepEqual(sanitized.earnedBadgeIds, ["esp-rookie", "code-whisperer"]);
   assert.equal(sanitized.benchLayout["esp32-s3"].x, 25);
   assert.equal(sanitized.benchLayout["esp32-s3"].y, 0);
 });

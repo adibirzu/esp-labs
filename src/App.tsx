@@ -15,8 +15,14 @@ import {
   Sun,
 } from "lucide-react";
 import { AccountMenu } from "./studio/components/AccountMenu";
+import { BadgeToast } from "./studio/components/BadgeToast";
 import { Breadcrumbs, type BreadcrumbItem } from "./studio/components/Breadcrumbs";
 import { GlobalSearch, type SearchResultAction } from "./studio/components/GlobalSearch";
+import {
+  evaluateDigitalBadges,
+  findNewlyUnlockedBadges,
+  type DigitalBadge,
+} from "./studio/logic/badges";
 import { OFFICIAL_ESP_BOARDS } from "./studio/data/boards";
 import { CHIP_BLOCKS, REGISTERS } from "./studio/data/chip";
 import { CODE_TOURS } from "./studio/data/code";
@@ -76,6 +82,9 @@ export default function App() {
   const [targetFlipperGuideId, setTargetFlipperGuideId] = useState<string | null>(null);
   const [targetFlipperBoardId, setTargetFlipperBoardId] = useState<string | null>(null);
   const [focusNonce, setFocusNonce] = useState(0);
+  const [accountMenuOpenNonce, setAccountMenuOpenNonce] = useState(0);
+  const [activeBadgeToast, setActiveBadgeToast] = useState<DigitalBadge | null>(null);
+  const prevUnlockedBadgeIdsRef = useRef<string[] | null>(null);
 
   const [isDark, setIsDark] = useState<boolean>(() => {
     try {
@@ -158,6 +167,15 @@ export default function App() {
     }
   });
 
+  const [persistedBadgeIds, setPersistedBadgeIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("esp_labs_studio_badges");
+      return saved ? (JSON.parse(saved) as string[]) : [];
+    } catch {
+      return [];
+    }
+  });
+
   useEffect(() => {
     document.documentElement.classList.toggle("dark", isDark);
     try {
@@ -232,6 +250,54 @@ export default function App() {
     }
   }, [customParts]);
 
+  const ownedPartsCount = useMemo(
+    () =>
+      Object.values(ownedParts).filter((qty) => qty > 0).length + customParts.length,
+    [ownedParts, customParts.length],
+  );
+
+  const badgeSummary = useMemo(
+    () =>
+      evaluateDigitalBadges({
+        completedLabIds: completedLabs,
+        labs: LABS,
+        savedIdeaIds,
+        playgroundRuns,
+        solvedQuizIds,
+        ownedPartsCount,
+        persistedBadgeIds,
+      }),
+    [completedLabs, savedIdeaIds, playgroundRuns, solvedQuizIds, ownedPartsCount, persistedBadgeIds],
+  );
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("esp_labs_studio_badges", JSON.stringify(badgeSummary.unlockedIds));
+    } catch {
+      // Ignore storage errors
+    }
+  }, [badgeSummary.unlockedIds]);
+
+  // Trigger celebratory toast only when a new badge unlocks after initial mount
+  useEffect(() => {
+    if (prevUnlockedBadgeIdsRef.current === null) {
+      prevUnlockedBadgeIdsRef.current = badgeSummary.unlockedIds;
+      return;
+    }
+    const newlyUnlocked = findNewlyUnlockedBadges(
+      prevUnlockedBadgeIdsRef.current,
+      badgeSummary.badges,
+    );
+    prevUnlockedBadgeIdsRef.current = badgeSummary.unlockedIds;
+    if (newlyUnlocked.length > 0) {
+      setActiveBadgeToast(newlyUnlocked[0]);
+      setPersistedBadgeIds((prev) => {
+        const merged = new Set([...prev, ...badgeSummary.unlockedIds]);
+        return Array.from(merged);
+      });
+    }
+  }, [badgeSummary.unlockedIds, badgeSummary.badges]);
+
   // Hydrate local state once per signed-in session when Firestore cloudVault arrives
   useEffect(() => {
     if (!user) {
@@ -250,6 +316,11 @@ export default function App() {
       if (cloudVault.savedIdeaIds.length > 0) {
         setSavedIdeaIds(cloudVault.savedIdeaIds);
       }
+      if (cloudVault.earnedBadgeIds && cloudVault.earnedBadgeIds.length > 0) {
+        setPersistedBadgeIds((prev) =>
+          Array.from(new Set([...prev, ...(cloudVault.earnedBadgeIds ?? [])])),
+        );
+      }
     }
   }, [user, vaultLoaded, cloudVault]);
 
@@ -266,11 +337,22 @@ export default function App() {
         customParts: customParts.map((c) => c.name),
         completedLabs,
         savedIdeaIds,
+        earnedBadgeIds: badgeSummary.unlockedIds,
         benchLayout: cloudVault?.benchLayout ?? {},
       });
     }, 650);
     return () => window.clearTimeout(timer);
-  }, [user, vaultLoaded, ownedParts, customParts, completedLabs, savedIdeaIds, cloudVault?.benchLayout, saveInventoryVault]);
+  }, [
+    user,
+    vaultLoaded,
+    ownedParts,
+    customParts,
+    completedLabs,
+    savedIdeaIds,
+    badgeSummary.unlockedIds,
+    cloudVault?.benchLayout,
+    saveInventoryVault,
+  ]);
 
   const toggleComplete = useCallback((id: string) => {
     setCompletedLabs((prev) =>
@@ -352,6 +434,14 @@ export default function App() {
     setIdeaBoardFilter(boardId);
     setHighlightedIdeaId(null);
     setView("ideas");
+  }, []);
+
+  const handleNavigateToBadgeGoal = useCallback((badge: DigitalBadge) => {
+    if (badge.actionView === "labs") {
+      setActiveTrack(badge.actionTrack ?? "all");
+      setSelectedLabId(null);
+    }
+    setView(badge.actionView);
   }, []);
 
   const handleGlobalSearchSelect = useCallback((action: SearchResultAction) => {
@@ -680,7 +770,13 @@ export default function App() {
           {/* Zone 3: Global Search + Google SSO Account + Language & Theme Controls */}
           <div className="flex items-center gap-1.5 shrink-0">
             <GlobalSearch t={t} lang={lang} onSelect={handleGlobalSearchSelect} />
-            <AccountMenu lang={lang} onOpenInventory={() => setView("kit")} />
+            <AccountMenu
+              lang={lang}
+              badgeSummary={badgeSummary}
+              onOpenInventory={() => setView("kit")}
+              onNavigateToBadgeGoal={handleNavigateToBadgeGoal}
+              externalOpenNonce={accountMenuOpenNonce}
+            />
             <button
               type="button"
               onClick={() => setLang((l) => (l === "ro" ? "en" : "ro"))}
@@ -749,6 +845,7 @@ export default function App() {
             onNavigate={setView}
             onOpenLabId={openLabById}
             onOpenIdeaId={openIdeaById}
+            badgeSummary={badgeSummary}
           />
         )}
         {view === "bench3d" && (
@@ -859,6 +956,13 @@ export default function App() {
           />
         )}
       </main>
+
+      <BadgeToast
+        badge={activeBadgeToast}
+        lang={lang}
+        onDismiss={() => setActiveBadgeToast(null)}
+        onOpenAccount={() => setAccountMenuOpenNonce((n) => n + 1)}
+      />
     </div>
   );
 }

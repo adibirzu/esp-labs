@@ -53,6 +53,7 @@ export interface CloudVaultData {
   completedLabs: string[];
   savedIdeaIds: string[];
   benchLayout: BenchLayoutMap;
+  earnedBadgeIds?: string[];
 }
 
 interface AuthContextValue {
@@ -200,6 +201,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             completedLabs: Array.isArray(d.completedLabs) ? (d.completedLabs as string[]) : [],
             savedIdeaIds: Array.isArray(d.savedIdeaIds) ? (d.savedIdeaIds as string[]) : [],
             benchLayout: (d.benchLayout as BenchLayoutMap) ?? {},
+            earnedBadgeIds: Array.isArray(d.earnedBadgeIds) ? (d.earnedBadgeIds as string[]) : [],
           });
           setSyncStatus("synced");
         } else {
@@ -292,6 +294,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             completedLabs: clean.completedLabs,
             savedIdeaIds: clean.savedIdeaIds,
             benchLayout: clean.benchLayout,
+            earnedBadgeIds: clean.earnedBadgeIds,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
@@ -303,6 +306,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             completedLabs: clean.completedLabs,
             savedIdeaIds: clean.savedIdeaIds,
             benchLayout: clean.benchLayout,
+            earnedBadgeIds: clean.earnedBadgeIds,
             updatedAt: serverTimestamp(),
           });
         }

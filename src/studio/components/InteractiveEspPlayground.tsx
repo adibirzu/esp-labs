@@ -14,8 +14,11 @@ import {
   ZoomOut,
 } from "lucide-react";
 import esp32RealTopImg from "../../assets/images/esp32_s3_real_top_1795635835402.jpg";
+import { OFFICIAL_ESP_BOARDS } from "../data/boards";
 import type { Translations } from "../i18n";
 import type { AudienceMode, Lang } from "../types";
+import { BoardTeardownDrilldown } from "./BoardTeardownDrilldown";
+import { JuniorExplorerStudio } from "./JuniorExplorerStudio";
 
 interface InteractiveEspPlaygroundProps {
   t: Translations;
@@ -215,7 +218,20 @@ const LED_COLORS: { id: string; hex: string; label: { en: string; ro: string } }
   { id: "rose", hex: "#f43f5e", label: { en: "Coral", ro: "Coral" } },
 ];
 
-export function InteractiveEspPlayground({
+export function InteractiveEspPlayground(props: InteractiveEspPlaygroundProps) {
+  if (props.audienceMode === "kids") {
+    return (
+      <JuniorExplorerStudio
+        lang={props.lang}
+        onRunSketch={props.onRunSketch}
+        onOpenBench3D={props.onOpenBench3D}
+      />
+    );
+  }
+  return <EngineerEspPlayground {...props} />;
+}
+
+function EngineerEspPlayground({
   t,
   lang,
   audienceMode,
@@ -1219,6 +1235,11 @@ void app_main(void) {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Adult Engineer Mode: Integrated Screw-Level Mechanical & BOM Drill-Down */}
+      <div className="border-t border-slate-200 dark:border-slate-800 p-4 sm:p-5 bg-slate-50/50 dark:bg-[#070b13]">
+        <BoardTeardownDrilldown board={OFFICIAL_ESP_BOARDS[0]} lang={lang} compact />
       </div>
     </section>
   );

@@ -68,6 +68,10 @@
           "type": "object",
           "description": "Saved 3D positions and rotations for boards on the 3D workbench (max 12 boards)."
         },
+        "earnedBadgeIds": {
+          "type": "array",
+          "description": "Unlocked digital badge IDs synced across devices (max 20 entries)."
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time"

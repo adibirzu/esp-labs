@@ -16,6 +16,7 @@ export const BLUEPRINT_LIMITS = {
   COMPLETED_LABS_MAX_ITEMS: 60,
   SAVED_IDEAS_MAX_ITEMS: 40,
   BENCH_LAYOUT_MAX_BOARDS: 12,
+  EARNED_BADGES_MAX_ITEMS: 20,
 } as const;
 
 export interface BenchBoardPose {
@@ -33,6 +34,7 @@ export interface SanitizedInventoryPayload {
   completedLabs: string[];
   savedIdeaIds: string[];
   benchLayout: BenchLayoutMap;
+  earnedBadgeIds: string[];
 }
 
 export function isValidFirebaseId(id: string): boolean {
@@ -117,6 +119,7 @@ export function sanitizeInventoryVault(input: {
   completedLabs: string[];
   savedIdeaIds: string[];
   benchLayout?: BenchLayoutMap;
+  earnedBadgeIds?: string[];
 }): SanitizedInventoryPayload {
   return {
     ownedParts: sanitizeOwnedParts(input.ownedParts),
@@ -136,5 +139,10 @@ export function sanitizeInventoryVault(input: {
       BLUEPRINT_LIMITS.ID_MAX_LEN,
     ),
     benchLayout: sanitizeBenchLayout(input.benchLayout ?? {}),
+    earnedBadgeIds: sanitizeStringList(
+      input.earnedBadgeIds ?? [],
+      BLUEPRINT_LIMITS.EARNED_BADGES_MAX_ITEMS,
+      BLUEPRINT_LIMITS.ID_MAX_LEN,
+    ),
   };
 }

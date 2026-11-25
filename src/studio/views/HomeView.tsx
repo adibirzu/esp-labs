@@ -14,14 +14,15 @@ import {
   Sparkles,
   Wrench,
 } from "lucide-react";
+import { renderBadgeIcon, tierAccentClasses } from "../components/BadgeToast";
 import { ConfettiBurst, type ConfettiBurstEvent } from "../components/ConfettiBurst";
 import { InteractiveEspPlayground } from "../components/InteractiveEspPlayground";
 import { PROJECT_IDEAS } from "../data/ideas";
 import { LABS } from "../data/labs";
 import { localizeIdea, localizeLab } from "../data/ro-overrides";
 import type { Translations } from "../i18n";
+import { evaluateDigitalBadges, type DigitalBadgeSummary } from "../logic/badges";
 import {
-  computeLearnerProgress,
   getIdeasForAudience,
   getRecommendedLabsForAudience,
 } from "../logic/learning-engine";
@@ -41,6 +42,7 @@ interface HomeViewProps {
   onNavigate: (view: ViewId) => void;
   onOpenLabId: (labId: string) => void;
   onOpenIdeaId: (ideaId: string) => void;
+  badgeSummary?: DigitalBadgeSummary;
 }
 
 interface QuizQuestion {
@@ -168,6 +170,7 @@ export function HomeView({
   onNavigate,
   onOpenLabId,
   onOpenIdeaId,
+  badgeSummary,
 }: HomeViewProps) {
   const [quizIdx, setQuizIdx] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -177,14 +180,15 @@ export function HomeView({
 
   const learner = useMemo(
     () =>
-      computeLearnerProgress(
-        completedLabs,
-        LABS,
+      badgeSummary ??
+      evaluateDigitalBadges({
+        completedLabIds: completedLabs,
+        labs: LABS,
         savedIdeaIds,
         playgroundRuns,
         solvedQuizIds,
-      ),
-    [completedLabs, savedIdeaIds, playgroundRuns, solvedQuizIds],
+      }),
+    [badgeSummary, completedLabs, savedIdeaIds, playgroundRuns, solvedQuizIds],
   );
 
   const recommendedLabs = useMemo(
@@ -381,24 +385,46 @@ export function HomeView({
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-            {learner.badges.map((badge) => (
-              <div
-                key={badge.id}
-                className={`p-3 rounded-xl border text-xs space-y-1 transition-colors ${
-                  badge.unlocked
-                    ? "bg-emerald-500/10 border-emerald-500/40 text-slate-900 dark:text-slate-100"
-                    : "bg-slate-50 dark:bg-slate-950/60 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 opacity-90"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-1 font-semibold">
-                  <span className="truncate">{lang === "ro" ? badge.titleRo : badge.titleEn}</span>
-                  {badge.unlocked && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />}
+            {learner.badges.map((badge) => {
+              const tier = tierAccentClasses(badge.tier);
+              return (
+                <div
+                  key={badge.id}
+                  className={`p-3 rounded-xl border text-xs space-y-1.5 transition-colors ${
+                    badge.unlocked
+                      ? `${tier.ring} ${tier.bg} text-slate-900 dark:text-slate-100`
+                      : "bg-slate-50 dark:bg-slate-950/60 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1 font-semibold">
+                    <span className="inline-flex items-center gap-1.5 min-w-0">
+                      <span className={badge.unlocked ? tier.text : "text-slate-400"}>
+                        {renderBadgeIcon(badge.icon, "w-3.5 h-3.5 shrink-0")}
+                      </span>
+                      <span className="truncate">{lang === "ro" ? badge.titleRo : badge.titleEn}</span>
+                    </span>
+                    {badge.unlocked ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                    ) : (
+                      <span className="text-[10px] font-mono text-slate-400 tabular-nums shrink-0">
+                        {badge.progress}/{badge.target}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] leading-snug opacity-90 line-clamp-2">
+                    {lang === "ro" ? badge.descRo : badge.descEn}
+                  </p>
+                  {!badge.unlocked && (
+                    <div className="h-1 w-full rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                      <div
+                        className="h-full bg-amber-500 rounded-full"
+                        style={{ width: `${Math.max(6, badge.progressPct)}%` }}
+                      />
+                    </div>
+                  )}
                 </div>
-                <p className="text-[11px] leading-snug opacity-90">
-                  {lang === "ro" ? badge.descRo : badge.descEn}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
