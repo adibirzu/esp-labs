@@ -9,12 +9,17 @@ import {
   ChevronDown,
   ChevronUp,
   Cloud,
+  Download,
+  ImagePlus,
   Move,
+  RefreshCw,
   RotateCcw,
   RotateCw,
+  ScanEye,
   Sparkles,
   Usb,
   Volume2,
+  X,
   Zap,
 } from "lucide-react";
 import {
@@ -27,6 +32,18 @@ import {
   type WiringPresetId,
 } from "../logic/bench-3d";
 import {
+  applyArPreset,
+  clampArAlignment,
+  computeArCameraPose,
+  describeCameraError,
+  getDefaultArAlignment,
+  type ArAlignmentState,
+  type ArFacingMode,
+  type ArPresetId,
+  type ArSessionStatus,
+} from "../logic/ar-alignment";
+import {
+  createArDeskCalibrationGrid,
   createBreadboard830Model,
   createEsdWorkbenchMat,
   createEsp32S3Board,
@@ -41,6 +58,7 @@ import {
   type OledRigHandles,
   type RfidRigHandles,
 } from "../three/board-models";
+import { ArAlignControls } from "../components/ArAlignControls";
 import { RealHardwareDrawer } from "../components/RealHardwareDrawer";
 import type { BenchLayoutMap } from "../firebase/payload-validators";
 import type { ParsedSerialTelemetry } from "../logic/hardware-bridge";
@@ -54,7 +72,7 @@ interface Workbench3DViewProps {
 }
 
 type GizmoMode = "orbit" | "translate" | "rotate";
-type DockTab = "move" | "interact" | "camera" | "wiring";
+type DockTab = "move" | "interact" | "camera" | "wiring" | "ar";
 type CameraPreset = "overview" | "esp32" | "flipper" | "top";
 
 const RGB_CYCLE = [
@@ -109,12 +127,21 @@ export function Workbench3DView({
   onSaveLayout,
 }: Workbench3DViewProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const deskPhotoImgRef = useRef<HTMLImageElement | null>(null);
+  const deskPhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+
   const [selectedBoard, setSelectedBoard] = useState<BenchBoardId>("esp32-s3");
   const [gizmoMode, setGizmoMode] = useState<GizmoMode>("orbit");
   const [wiringPreset, setWiringPreset] = useState<WiringPresetId>("flipper-uart");
   const [dockTab, setDockTab] = useState<DockTab>("move");
   const [dockCollapsed, setDockCollapsed] = useState(false);
   const [showHardwareBridge, setShowHardwareBridge] = useState(false);
+  const [arStatus, setArStatus] = useState<ArSessionStatus>("off");
+  const [arError, setArError] = useState<{ title: string; detail: string } | null>(null);
+  const [arAlignment, setArAlignment] = useState<ArAlignmentState>(() => getDefaultArAlignment());
+  const [deskPhotoUrl, setDeskPhotoUrl] = useState<string | null>(null);
   const [statusFeed, setStatusFeed] = useState<string>(
     lang === "ro"
       ? "Apasă pe orice placă pentru selecție sau pe butoanele fizice (BOOT, RST, RGB, OK, Card RFID, Difuzor)."
@@ -131,6 +158,8 @@ export function Workbench3DView({
   const langRef = useRef<Lang>(lang);
   const rgbIndexRef = useRef(rgbIndex);
   const flipperModeRef = useRef(flipperModeIdx);
+  const arAlignmentRef = useRef<ArAlignmentState>(arAlignment);
+  const arActiveRef = useRef(false);
 
   const sceneApiRef = useRef<{
     selectBoard: (id: BenchBoardId) => void;
@@ -142,6 +171,9 @@ export function Workbench3DView({
     resetLayout: () => void;
     getCurrentLayout: () => BenchLayoutMap;
     applyTelemetry: (tel: ParsedSerialTelemetry, rawLine: string) => void;
+    setArMode: (enabled: boolean, alignment: ArAlignmentState) => void;
+    updateArAlignment: (alignment: ArAlignmentState) => void;
+    renderNowForSnapshot: () => HTMLCanvasElement | null;
   } | null>(null);
 
   useEffect(() => {
@@ -156,6 +188,9 @@ export function Workbench3DView({
   useEffect(() => {
     langRef.current = lang;
   }, [lang]);
+  useEffect(() => {
+    arAlignmentRef.current = arAlignment;
+  }, [arAlignment]);
 
   // Initialize Three.js WebGL scene ONCE
   useEffect(() => {
@@ -175,15 +210,20 @@ export function Workbench3DView({
     const width = Math.max(320, container.clientWidth);
     const height = Math.max(420, container.clientHeight);
 
+    const studioBg = new THREE.Color(0x0b1220);
+    const studioFog = new THREE.Fog(0x0b1220, 26, 62);
+
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0b1220);
-    scene.fog = new THREE.Fog(0x0b1220, 26, 62);
+    scene.background = studioBg;
+    scene.fog = studioFog;
 
     const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 120);
     camera.position.set(...CAMERA_PRESETS.overview.pos);
 
     const renderer = new THREE.WebGLRenderer({
       antialias: !isSoftwareGl,
+      alpha: true,
+      preserveDrawingBuffer: true,
       powerPreference: "high-performance",
     });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -191,6 +231,7 @@ export function Workbench3DView({
     renderer.toneMappingExposure = 1.12;
     renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height);
+    renderer.setClearColor(0x0b1220, 1);
     renderer.shadowMap.enabled = !isSoftwareGl;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
@@ -223,9 +264,13 @@ export function Workbench3DView({
 
     const maxAniso = renderer.capabilities.getMaxAnisotropy();
 
-    // Grounded ESD Workbench Mat
+    // Grounded ESD Workbench Mat (hidden during AR Mode so real desk shows through)
     const esdMat = createEsdWorkbenchMat(maxAniso);
     scene.add(esdMat);
+
+    // Translucent AR Desk Calibration Grid + Real-World Shadow Catcher Plane
+    const arDeskOverlay = createArDeskCalibrationGrid(maxAniso);
+    scene.add(arDeskOverlay.group);
 
     // Subtle selection highlight ring on the mat
     const selRingGeo = new THREE.RingGeometry(1.5, 1.72, 48);
@@ -415,8 +460,10 @@ export function Workbench3DView({
     });
     controls.addEventListener("change", requestRender);
 
+    let gizmoDragging = false;
     transformControls.addEventListener("dragging-changed", (event) => {
-      controls.enabled = !event.value;
+      gizmoDragging = Boolean(event.value);
+      controls.enabled = !gizmoDragging && !(arActiveRef.current && arAlignmentRef.current.lockDeskAlignment);
       requestRender();
     });
     transformControls.addEventListener("objectChange", () => {
@@ -595,6 +642,49 @@ export function Workbench3DView({
     };
     window.addEventListener("resize", onResize);
 
+    const applyBoardOpacity = (opacity: number) => {
+      const clamped = Math.max(0.25, Math.min(1, opacity));
+      const useGhost = clamped < 0.99;
+      for (const grp of Object.values(boardGroups)) {
+        grp.traverse((obj) => {
+          if (!(obj instanceof THREE.Mesh) || obj.userData.isContactShadow) return;
+          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+          for (const mat of mats) {
+            if (!mat) continue;
+            if (mat.userData.__origTransparent === undefined) {
+              mat.userData.__origTransparent = mat.transparent;
+              mat.userData.__origOpacity = mat.opacity;
+            }
+            const origT = Boolean(mat.userData.__origTransparent);
+            const origO = typeof mat.userData.__origOpacity === "number" ? mat.userData.__origOpacity : 1;
+            mat.transparent = useGhost ? true : origT;
+            mat.opacity = useGhost ? origO * clamped : origO;
+            mat.needsUpdate = true;
+          }
+        });
+      }
+    };
+
+    const applyArAlignmentToScene = (alignment: ArAlignmentState, animateCamera: boolean) => {
+      arDeskOverlay.gridPlane.visible = alignment.showCalibrationGrid;
+      applyBoardOpacity(alignment.modelOpacity);
+      camera.fov = alignment.cameraFov;
+      camera.updateProjectionMatrix();
+      controls.enabled = !gizmoDragging && !alignment.lockDeskAlignment;
+      const pose = computeArCameraPose(alignment);
+      if (animateCamera) {
+        _camGoalPos.set(...pose.position);
+        _camGoalTarget.set(...pose.target);
+        camAnimating = true;
+      } else {
+        camAnimating = false;
+        camera.position.set(...pose.position);
+        controls.target.set(...pose.target);
+        controls.update();
+      }
+      requestRender();
+    };
+
     // Expose imperative bridge API to React dock controls
     sceneApiRef.current = {
       selectBoard: (id) => {
@@ -668,6 +758,40 @@ export function Workbench3DView({
         }
         requestRender();
       },
+      setArMode: (enabled, alignment) => {
+        arActiveRef.current = enabled;
+        if (enabled) {
+          scene.background = null;
+          scene.fog = null;
+          renderer.setClearColor(0x000000, 0);
+          esdMat.visible = false;
+          arDeskOverlay.group.visible = true;
+          applyArAlignmentToScene(alignment, false);
+        } else {
+          scene.background = studioBg;
+          scene.fog = studioFog;
+          renderer.setClearColor(0x0b1220, 1);
+          esdMat.visible = true;
+          arDeskOverlay.group.visible = false;
+          applyBoardOpacity(1.0);
+          camera.fov = 42;
+          camera.updateProjectionMatrix();
+          controls.enabled = !gizmoDragging;
+          _camGoalPos.set(...CAMERA_PRESETS.overview.pos);
+          _camGoalTarget.set(...CAMERA_PRESETS.overview.target);
+          camAnimating = true;
+          requestRender();
+        }
+      },
+      updateArAlignment: (alignment) => {
+        if (!arActiveRef.current) return;
+        applyArAlignmentToScene(alignment, false);
+      },
+      renderNowForSnapshot: () => {
+        if (disposed) return null;
+        renderer.render(scene, camera);
+        return renderer.domElement;
+      },
     };
 
     if (!isSoftwareGl) {
@@ -692,6 +816,226 @@ export function Workbench3DView({
     };
   }, [savedLayout]);
 
+  const stopCameraTracks = useCallback(() => {
+    if (mediaStreamRef.current) {
+      for (const track of mediaStreamRef.current.getTracks()) {
+        track.stop();
+      }
+      mediaStreamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  }, []);
+
+  const exitArMode = useCallback(() => {
+    stopCameraTracks();
+    setDeskPhotoUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setArError(null);
+    setArStatus("off");
+    setDockTab((curr) => (curr === "ar" ? "move" : curr));
+    sceneApiRef.current?.setArMode(false, arAlignmentRef.current);
+    setStatusFeed(
+      lang === "ro"
+        ? "Mod AR închis — ai revenit pe bancul 3D ESD."
+        : "Exited AR Mode — returned to the 3D ESD workbench.",
+    );
+  }, [lang, stopCameraTracks]);
+
+  const startArCamera = useCallback(
+    async (preferredFacing?: ArFacingMode) => {
+      const targetFacing = preferredFacing ?? arAlignmentRef.current.facingMode;
+      stopCameraTracks();
+      setDeskPhotoUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      setArError(null);
+      setArStatus("requesting");
+
+      if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
+        setArStatus("error");
+        setArError(describeCameraError(new Error("MediaDevices unavailable"), lang));
+        return;
+      }
+
+      try {
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: targetFacing },
+              width: { ideal: 1920 },
+              height: { ideal: 1080 },
+            },
+            audio: false,
+          });
+        } catch (firstErr) {
+          if (firstErr instanceof Error && firstErr.name === "OverconstrainedError") {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          } else {
+            throw firstErr;
+          }
+        }
+
+        mediaStreamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {
+            // Autoplay muted stream may resolve asynchronously
+          });
+        }
+
+        const nextAlignment = clampArAlignment(
+          { facingMode: targetFacing, mirrorVideo: targetFacing === "user" },
+          arAlignmentRef.current,
+        );
+        arAlignmentRef.current = nextAlignment;
+        setArAlignment(nextAlignment);
+        setArStatus("live-camera");
+        setDockTab("ar");
+        setDockCollapsed(false);
+        sceneApiRef.current?.setArMode(true, nextAlignment);
+        setStatusFeed(
+          lang === "ro"
+            ? "Mod AR activ! Aliniază grila de 100 mm cu biroul tău fizic și mută plăcile 3D peste montajul real."
+            : "AR Mode live! Align the 100 mm calibration grid with your physical desk and position 3D boards over your setup.",
+        );
+      } catch (err) {
+        stopCameraTracks();
+        setArStatus("error");
+        setArError(describeCameraError(err, lang));
+      }
+    },
+    [lang, stopCameraTracks],
+  );
+
+  const handleToggleArMode = useCallback(() => {
+    if (arStatus === "off") {
+      void startArCamera();
+    } else {
+      exitArMode();
+    }
+  }, [arStatus, exitArMode, startArCamera]);
+
+  const handleArAlignmentChange = useCallback((patch: Partial<ArAlignmentState>) => {
+    setArAlignment((prev) => {
+      const next = clampArAlignment(patch, prev);
+      arAlignmentRef.current = next;
+      sceneApiRef.current?.updateArAlignment(next);
+      return next;
+    });
+  }, []);
+
+  const handleArPreset = useCallback((preset: ArPresetId) => {
+    setArAlignment((prev) => {
+      const next = applyArPreset(preset, prev);
+      arAlignmentRef.current = next;
+      sceneApiRef.current?.updateArAlignment(next);
+      return next;
+    });
+  }, []);
+
+  const handleArReset = useCallback(() => {
+    setArAlignment((prev) => {
+      const next = clampArAlignment({ facingMode: prev.facingMode, mirrorVideo: prev.mirrorVideo }, getDefaultArAlignment());
+      arAlignmentRef.current = next;
+      sceneApiRef.current?.updateArAlignment(next);
+      return next;
+    });
+  }, []);
+
+  const handleSwitchCamera = useCallback(() => {
+    const nextFacing: ArFacingMode =
+      arAlignmentRef.current.facingMode === "environment" ? "user" : "environment";
+    void startArCamera(nextFacing);
+  }, [startArCamera]);
+
+  const handleDeskPhotoFile = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (!file) return;
+      stopCameraTracks();
+      const url = URL.createObjectURL(file);
+      setDeskPhotoUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return url;
+      });
+      setArError(null);
+      setArStatus("desk-photo");
+      setDockTab("ar");
+      setDockCollapsed(false);
+      sceneApiRef.current?.setArMode(true, arAlignmentRef.current);
+      setStatusFeed(
+        lang === "ro"
+          ? "Fotografie birou încărcată în Mod AR — ajustează Scara, Înclinarea și Opacitatea X-Ray pentru aliniere."
+          : "Desk photo loaded in AR Mode — adjust Real Scale, Desk Tilt, and X-Ray Opacity to align virtual hardware.",
+      );
+    },
+    [lang, stopCameraTracks],
+  );
+
+  const handleCaptureArSnapshot = useCallback(() => {
+    const glCanvas = sceneApiRef.current?.renderNowForSnapshot();
+    if (!glCanvas) return;
+    const outW = glCanvas.width;
+    const outH = glCanvas.height;
+    const composite = document.createElement("canvas");
+    composite.width = outW;
+    composite.height = outH;
+    const ctx = composite.getContext("2d");
+    if (!ctx) return;
+
+    const drawCovered = (source: HTMLVideoElement | HTMLImageElement, srcW: number, srcH: number) => {
+      if (!srcW || !srcH) return;
+      const scale = Math.max(outW / srcW, outH / srcH);
+      const dw = srcW * scale;
+      const dh = srcH * scale;
+      const dx = (outW - dw) / 2;
+      const dy = (outH - dh) / 2;
+      ctx.save();
+      if (arAlignmentRef.current.mirrorVideo) {
+        ctx.translate(outW, 0);
+        ctx.scale(-1, 1);
+      }
+      ctx.drawImage(source, dx, dy, dw, dh);
+      ctx.restore();
+    };
+
+    if (arStatus === "live-camera" && videoRef.current && videoRef.current.videoWidth > 0) {
+      drawCovered(videoRef.current, videoRef.current.videoWidth, videoRef.current.videoHeight);
+    } else if (arStatus === "desk-photo" && deskPhotoImgRef.current && deskPhotoImgRef.current.naturalWidth > 0) {
+      drawCovered(
+        deskPhotoImgRef.current,
+        deskPhotoImgRef.current.naturalWidth,
+        deskPhotoImgRef.current.naturalHeight,
+      );
+    }
+
+    ctx.drawImage(glCanvas, 0, 0, outW, outH);
+    const link = document.createElement("a");
+    link.download = `esp-labs-ar-workbench-${Date.now()}.png`;
+    link.href = composite.toDataURL("image/png");
+    link.click();
+    setSaveNotice(
+      lang === "ro"
+        ? "Captură AR salvată (PNG)!"
+        : "AR workbench snapshot saved (PNG)!",
+    );
+    setTimeout(() => setSaveNotice(null), 3000);
+  }, [arStatus, lang]);
+
+  // Clean up camera stream and blob URLs on unmount
+  useEffect(() => {
+    return () => {
+      stopCameraTracks();
+    };
+  }, [stopCameraTracks]);
+
   const handleSaveCloudLayout = useCallback(async () => {
     if (!sceneApiRef.current || !onSaveLayout) return;
     const layout = sceneApiRef.current.getCurrentLayout();
@@ -710,12 +1054,24 @@ export function Workbench3DView({
   }, []);
 
   const activeBoardMeta = BENCH_BOARDS.find((b) => b.id === selectedBoard) ?? BENCH_BOARDS[0];
+  const isArVisible = arStatus === "live-camera" || arStatus === "desk-photo";
 
   return (
     <div className="space-y-4">
+      {/* Hidden file input for optional desk photo AR fallback */}
+      <input
+        ref={deskPhotoInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleDeskPhotoFile}
+        className="hidden"
+        aria-label={lang === "ro" ? "Încarcă fotografie birou AR" : "Upload AR desk photo"}
+      />
+
       {/* Minimal Header Row */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+        <div className="min-w-0 flex-1">
           <h1
             className="text-xl sm:text-2xl font-bold tracking-tight"
             style={{ fontFamily: "var(--font-display)" }}
@@ -726,27 +1082,51 @@ export function Workbench3DView({
           </h1>
           <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
             {lang === "ro"
-              ? "Plăci reproduse la scară reală (mm) pe care le poți muta și roti în 3D, testa prin click direct sau conecta prin USB-C / BLE."
-              : "True-scale (mm) 3D hardware boards you can freely move and rotate in 3D space, click directly, or bridge via USB-C / BLE."}
+              ? "Plăci reproduse la scară reală (mm) pe care le poți muta în 3D, suprapune AR peste biroul real sau conecta prin USB-C / BLE."
+              : "True-scale (mm) 3D boards you can move in 3D, overlay in AR onto your real desk, or bridge via USB-C / BLE."}
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowHardwareBridge((s) => !s)}
-          className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
-            showHardwareBridge
-              ? "bg-emerald-600 text-white"
-              : "bg-cyan-600 hover:bg-cyan-500 text-white"
-          }`}
-        >
-          <Usb className="w-4 h-4" />
-          <span>
-            {lang === "ro"
-              ? "Conectează Hardware Real (USB / BLE)"
-              : "Connect Real Hardware (USB / BLE)"}
-          </span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={handleToggleArMode}
+            aria-pressed={arStatus !== "off"}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+              arStatus !== "off"
+                ? "bg-amber-600 hover:bg-amber-500 text-white"
+                : "bg-emerald-600 hover:bg-emerald-500 text-white"
+            }`}
+          >
+            {arStatus !== "off" ? <X className="w-4 h-4" /> : <ScanEye className="w-4 h-4" />}
+            <span>
+              {arStatus !== "off"
+                ? lang === "ro"
+                  ? "Ieși din Mod AR"
+                  : "Exit AR Mode"
+                : lang === "ro"
+                  ? "Mod AR"
+                  : "AR Mode"}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowHardwareBridge((s) => !s)}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+              showHardwareBridge
+                ? "bg-emerald-700 text-white"
+                : "bg-cyan-600 hover:bg-cyan-500 text-white"
+            }`}
+          >
+            <Usb className="w-4 h-4" />
+            <span>
+              {lang === "ro"
+                ? "Conectează Hardware Real (USB / BLE)"
+                : "Connect Real Hardware (USB / BLE)"}
+            </span>
+          </button>
+        </div>
       </div>
 
       {/* Collapsible Real Physical Hardware Bridge Drawer (Above 3D canvas so viewport stays unobstructed) */}
@@ -758,22 +1138,138 @@ export function Workbench3DView({
         />
       )}
 
-      {/* Unobstructed 3D WebGL Viewport with Collapsible Bottom Control Dock */}
-      <div className="relative rounded-2xl border border-slate-300 dark:border-slate-800 bg-[#0b1220] overflow-hidden h-[560px] sm:h-[640px]">
+      {/* Unobstructed 3D / AR WebGL Viewport with Collapsible Bottom Control Dock */}
+      <div
+        data-ar-mode={arStatus}
+        className="relative rounded-2xl border border-slate-300 dark:border-slate-800 bg-[#0b1220] overflow-hidden h-[560px] sm:h-[640px]"
+      >
+        {/* Live Camera Video Feed Layer (Behind transparent Three.js WebGL canvas) */}
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          aria-label={lang === "ro" ? "Flux cameră AR birou real" : "AR live desk camera feed"}
+          className={`absolute inset-0 w-full h-full object-cover z-0 transition-opacity duration-200 ${
+            arStatus === "live-camera" ? "opacity-100" : "opacity-0 pointer-events-none"
+          } ${arAlignment.mirrorVideo ? "-scale-x-100" : ""}`}
+        />
+
+        {/* Optional Desk Reference Photo Layer (Fallback when device has no camera) */}
+        {arStatus === "desk-photo" && deskPhotoUrl && (
+          <img
+            ref={deskPhotoImgRef}
+            src={deskPhotoUrl}
+            alt={lang === "ro" ? "Birou fizic pentru aliniere AR" : "Physical desk for AR alignment"}
+            className={`absolute inset-0 w-full h-full object-cover z-0 ${
+              arAlignment.mirrorVideo ? "-scale-x-100" : ""
+            }`}
+          />
+        )}
+
         {/* Isolated empty mount div for Three.js WebGL canvas */}
         <div
           ref={mountRef}
           data-testid="workbench-3d-canvas"
-          className="w-full h-full cursor-grab active:cursor-grabbing"
+          className="relative z-10 w-full h-full cursor-grab active:cursor-grabbing"
         />
 
-        {/* Minimal Top-Left Spec Bar (solid surface, zero backdrop-blur over WebGL) */}
-        <div className="absolute top-3 left-3 max-w-md rounded-xl border border-slate-700 bg-slate-950/95 px-3.5 py-2 text-slate-100 pointer-events-none">
-          <div className="flex items-center gap-2 text-xs font-bold">
+        {/* Requesting Camera Permission Overlay */}
+        {arStatus === "requesting" && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/85 p-4">
+            <div className="max-w-md w-full rounded-2xl border border-emerald-500/40 bg-slate-950 p-5 text-center space-y-3 text-slate-100 shadow-2xl">
+              <ScanEye className="w-8 h-8 text-emerald-400 mx-auto" />
+              <h2 className="text-base font-bold">
+                {lang === "ro" ? "Se solicită accesul la cameră..." : "Requesting camera access..."}
+              </h2>
+              <p className="text-xs text-slate-300">
+                {lang === "ro"
+                  ? "Confirmă permisiunea camerei în browser pentru a suprapune componentele 3D peste biroul tău fizic."
+                  : "Approve camera permission in your browser to overlay the 3D boards directly onto your physical desk."}
+              </p>
+              <button
+                type="button"
+                onClick={exitArMode}
+                className="px-4 py-1.5 rounded-lg border border-slate-700 hover:border-slate-500 text-xs font-semibold text-slate-200 cursor-pointer"
+              >
+                {lang === "ro" ? "Anulează" : "Cancel"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Camera Permission Denied / No Camera Fallback Overlay */}
+        {arStatus === "error" && arError && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/85 p-4">
+            <div className="max-w-md w-full rounded-2xl border border-amber-500/40 bg-slate-950 p-5 space-y-3 text-slate-100 shadow-2xl">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <ScanEye className="w-5 h-5 text-amber-400 shrink-0" />
+                  <h2 className="text-sm font-bold text-amber-300">{arError.title}</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={exitArMode}
+                  aria-label={lang === "ro" ? "Închide Mod AR" : "Close AR Mode"}
+                  className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">{arError.detail}</p>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => void startArCamera()}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>{lang === "ro" ? "Reîncearcă Camera" : "Retry Camera"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deskPhotoInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold cursor-pointer"
+                >
+                  <ImagePlus className="w-3.5 h-3.5" />
+                  <span>{lang === "ro" ? "Încarcă Foto Birou" : "Upload Desk Photo"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={exitArMode}
+                  className="px-3 py-2 rounded-lg border border-slate-700 hover:border-slate-500 text-xs font-semibold text-slate-300 cursor-pointer"
+                >
+                  {lang === "ro" ? "Înapoi la 3D" : "Back to 3D"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Minimal Top-Left Spec & AR Status Bar (solid surface, zero backdrop-blur over WebGL) */}
+        <div className="absolute top-3 left-3 z-20 max-w-lg rounded-xl border border-slate-700 bg-slate-950/95 px-3.5 py-2 text-slate-100">
+          <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+            {isArVisible && (
+              <span className="px-1.5 py-0.5 rounded bg-emerald-600 text-[10px] font-mono uppercase tracking-wide text-white">
+                {arStatus === "live-camera" ? "AR LIVE" : "AR PHOTO"}
+              </span>
+            )}
             <span className="text-cyan-400">{activeBoardMeta.name}</span>
             <span className="text-[11px] font-mono text-slate-400">
               {activeBoardMeta.sizeMm}
             </span>
+            {isArVisible && (
+              <div className="ml-auto flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleCaptureArSnapshot}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-600 text-[10px] font-semibold text-slate-100 cursor-pointer"
+                >
+                  <Download className="w-3 h-3 text-emerald-400" />
+                  <span>{lang === "ro" ? "Captură AR" : "AR Snapshot"}</span>
+                </button>
+              </div>
+            )}
           </div>
           <div className="text-[11px] text-slate-300 truncate">{statusFeed}</div>
           {saveNotice && (
@@ -782,7 +1278,7 @@ export function Workbench3DView({
         </div>
 
         {/* Collapsible Bottom Control Dock (Zero Viewport Occlusion) */}
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 w-[min(940px,95%)] flex flex-col items-center">
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 w-[min(940px,95%)] flex flex-col items-center">
           <button
             type="button"
             onClick={() => setDockCollapsed((c) => !c)}
@@ -806,6 +1302,9 @@ export function Workbench3DView({
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
                 <div className="flex flex-wrap items-center gap-1">
                   {[
+                    ...(isArVisible
+                      ? [{ id: "ar" as const, icon: ScanEye, label: lang === "ro" ? "Aliniere AR" : "AR Align" }]
+                      : []),
                     { id: "move" as const, icon: Move, label: lang === "ro" ? "Plăci & Mutare 3D" : "Boards & 3D Move" },
                     { id: "interact" as const, icon: Zap, label: lang === "ro" ? "Interacțiune Live" : "Live Interact" },
                     { id: "wiring" as const, icon: Cable, label: lang === "ro" ? "Cablare 3D" : "3D Wiring" },
@@ -820,7 +1319,9 @@ export function Workbench3DView({
                         onClick={() => setDockTab(tabItem.id)}
                         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
                           active
-                            ? "bg-cyan-600 text-white"
+                            ? tabItem.id === "ar"
+                              ? "bg-emerald-600 text-white"
+                              : "bg-cyan-600 text-white"
                             : "text-slate-300 hover:bg-slate-800"
                         }`}
                       >
@@ -855,6 +1356,19 @@ export function Workbench3DView({
                   ))}
                 </div>
               </div>
+
+              {/* Tab 0: AR Real-Desk Calibration Controls */}
+              {dockTab === "ar" && isArVisible && (
+                <ArAlignControls
+                  lang={lang}
+                  alignment={arAlignment}
+                  hasLiveCamera={arStatus === "live-camera"}
+                  onChange={handleArAlignmentChange}
+                  onPreset={handleArPreset}
+                  onReset={handleArReset}
+                  onSwitchCamera={handleSwitchCamera}
+                />
+              )}
 
               {/* Tab 1: Select Board & 3D Transform Actions */}
               {dockTab === "move" && (

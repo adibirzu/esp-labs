@@ -80,6 +80,7 @@ function createContactShadow(w: number, d: number): THREE.Mesh {
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.y = 0.012;
+  mesh.userData.isContactShadow = true;
   return mesh;
 }
 
@@ -164,6 +165,142 @@ export function createEsdWorkbenchMat(maxAnisotropy: number): THREE.Mesh {
   mesh.receiveShadow = true;
   mesh.name = "esd-mat";
   return mesh;
+}
+
+export interface ArDeskOverlayHandles {
+  group: THREE.Group;
+  gridPlane: THREE.Mesh;
+  shadowCatcher: THREE.Mesh;
+}
+
+/**
+ * Translucent AR desk calibration reticle (10mm / 50mm metric grid, corner L-brackets,
+ * 100mm calibration ruler, and a ShadowMaterial catcher plane for real-world desk grounding).
+ */
+export function createArDeskCalibrationGrid(maxAnisotropy: number): ArDeskOverlayHandles {
+  const group = new THREE.Group();
+  group.name = "ar-desk-overlay";
+  group.visible = false;
+
+  // Transparent shadow catcher so virtual boards cast realistic shadows onto the real desk
+  const shadowGeo = new THREE.PlaneGeometry(42, 30);
+  shadowGeo.rotateX(-Math.PI / 2);
+  const shadowMat = new THREE.ShadowMaterial({ opacity: 0.36 });
+  const shadowCatcher = new THREE.Mesh(shadowGeo, shadowMat);
+  shadowCatcher.position.y = 0.002;
+  shadowCatcher.receiveShadow = true;
+  shadowCatcher.name = "ar-shadow-catcher";
+  group.add(shadowCatcher);
+
+  // Crisp procedural transparent metric calibration reticle (280mm x 180mm -> 28 x 18 units)
+  const canvas = document.createElement("canvas");
+  canvas.width = 1400;
+  canvas.height = 900;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.clearRect(0, 0, 1400, 900);
+
+    // Subtle 10mm minor grid (50px = 10mm -> 1400px = 280mm, 900px = 180mm)
+    ctx.strokeStyle = "rgba(56, 189, 248, 0.24)";
+    ctx.lineWidth = 1.5;
+    for (let x = 0; x <= 1400; x += 50) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, 900);
+      ctx.stroke();
+    }
+    for (let y = 0; y <= 900; y += 50) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(1400, y);
+      ctx.stroke();
+    }
+
+    // 50mm major grid
+    ctx.strokeStyle = "rgba(16, 185, 129, 0.48)";
+    ctx.lineWidth = 2.5;
+    for (let x = 0; x <= 1400; x += 250) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, 900);
+      ctx.stroke();
+    }
+    for (let y = 0; y <= 900; y += 250) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(1400, y);
+      ctx.stroke();
+    }
+
+    // Outer desk calibration corner L-brackets
+    ctx.strokeStyle = "rgba(34, 211, 238, 0.92)";
+    ctx.lineWidth = 6;
+    const arm = 76;
+    const pad = 16;
+    const corners: [number, number, number, number][] = [
+      [pad, pad, 1, 1],
+      [1400 - pad, pad, -1, 1],
+      [pad, 900 - pad, 1, -1],
+      [1400 - pad, 900 - pad, -1, -1],
+    ];
+    for (const [cx, cy, dx, dy] of corners) {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + dy * arm);
+      ctx.lineTo(cx, cy);
+      ctx.lineTo(cx + dx * arm, cy);
+      ctx.stroke();
+    }
+
+    // Center crosshair
+    ctx.strokeStyle = "rgba(16, 185, 129, 0.9)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(664, 450);
+    ctx.lineTo(736, 450);
+    ctx.moveTo(700, 414);
+    ctx.lineTo(700, 486);
+    ctx.stroke();
+
+    // 100mm physical scale reference bar at front edge (500px = 100mm)
+    const barY = 852;
+    ctx.strokeStyle = "rgba(251, 191, 36, 0.95)";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(450, barY);
+    ctx.lineTo(950, barY);
+    ctx.moveTo(450, barY - 14);
+    ctx.lineTo(450, barY + 14);
+    ctx.moveTo(950, barY - 14);
+    ctx.lineTo(950, barY + 14);
+    ctx.stroke();
+
+    ctx.fillStyle = "rgba(251, 191, 36, 0.98)";
+    ctx.font = "bold 24px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("100 mm REAL DESK CALIBRATION BAR (10 mm GRID)", 700, barY - 18);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = maxAnisotropy;
+
+  const gridGeo = new THREE.PlaneGeometry(28, 18);
+  gridGeo.rotateX(-Math.PI / 2);
+  const gridMat = new THREE.MeshBasicMaterial({
+    map: tex,
+    transparent: true,
+    opacity: 0.85,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
+  });
+  const gridPlane = new THREE.Mesh(gridGeo, gridMat);
+  gridPlane.position.y = 0.008;
+  gridPlane.name = "ar-calibration-grid";
+  group.add(gridPlane);
+
+  return { group, gridPlane, shadowCatcher };
 }
 
 /**
