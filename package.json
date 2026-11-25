@@ -5,32 +5,24 @@
   "license": "MIT",
   "description": "The ESP32-S3 bench guide as a React app: pinout, lessons and simulators.",
   "type": "module",
-  "packageManager": "pnpm@11.10.0",
-  "engines": {
-    "node": ">=24.14"
-  },
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview",
-    "typecheck": "tsc -b",
+    "dev": "vite --host 0.0.0.0 --port 3000",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 3000",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run",
-    "check": "pnpm typecheck && pnpm lint && pnpm test",
-    "i18n:extract": "vitest run src/content/catalogues.test.ts --update",
-    "chip:refs": "node tools/chip/check-refs.ts",
-    "deploy:preview": "vercel pull --yes --environment=preview && vercel build && vercel deploy --prebuilt",
-    "deploy:prod": "vercel pull --yes --environment=production && vercel build --prod && vercel deploy --prebuilt --prod"
+    "test": "vitest run"
   },
   "dependencies": {
+    "@tailwindcss/vite": "^4.3.5",
     "@tanstack/react-query": "5.104.3",
-    "@vercel/analytics": "2.0.1",
-    "@vercel/speed-insights": "2.0.0",
     "i18next": "26.4.2",
+    "lucide-react": "^1.80.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-i18next": "17.0.15",
     "react-router": "8.4.0",
+    "tailwindcss": "^4.3.5",
     "three": "0.186.1",
     "zod": "4.6.7"
   },

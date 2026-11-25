@@ -1,0 +1,5 @@
+{
+  "name": "ESP-Labs Studio",
+  "description": "Interactive ESP32-S3 hardware workbench with 6 learning tracks, live simulators, 44-pin conflict checker, chip register atlas, ESP-IDF code tours, and kit inventory.",
+  "requestFramePermissions": []
+}

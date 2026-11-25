@@ -1,24 +1,28 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="color-scheme" content="light dark" />
+    <meta name="color-scheme" content="dark light" />
     <meta
       name="description"
-      content="ESP32-S3 N16R8 bench guide: live pinout, lessons and simulators."
+      content="Interactive ESP32-S3 hardware workbench with 6 learning tracks, live simulators, 44-pin conflict checker, chip register atlas, ESP-IDF code tours, and kit inventory."
     />
-    <title>ESP32-S3 Bench Guide</title>
-    <!-- No icon file yet: an empty one stops the browser asking for /favicon.ico (a 404). -->
+    <meta property="og:title" content="ESP-Labs Studio" />
+    <meta
+      property="og:description"
+      content="Interactive ESP32-S3 hardware workbench with 6 learning tracks, live simulators, 44-pin conflict checker, chip register atlas, ESP-IDF code tours, and kit inventory."
+    />
+    <title>ESP-Labs Studio</title>
     <link rel="icon" href="data:," />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
     />
   </head>
-  <body>
+  <body class="bg-slate-50 text-slate-900 dark:bg-[#080c14] dark:text-slate-100 antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
